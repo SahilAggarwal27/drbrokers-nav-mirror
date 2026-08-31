@@ -11,14 +11,14 @@ Output shape per scheme (docs/mf/<code>.json):
     "data": [ { "date": "DD-MM-YYYY", "nav": "123.4560" }, ... ] }   # newest-first
 
 History is persisted in data/history/<code>.json (committed by the workflow) so
-each daily run appends exactly one point per scheme and the archive grows to a
-full 20-year matrix over time. On first run it also ingests any bulk seed you
-drop into data/seed/ (per-scheme mfapi JSON) to backfill history immediately.
+each daily run appends exactly one point per scheme and the archive grows over
+time. For a full 20-year archive on day one, either run seed_history_amfi.py
+locally, or commit a prebuilt data/history-seed.tar.gz (a gzipped tar of a
+history/ dir) — the build auto-extracts it on the next run.
 
 Design notes:
-- AMFI NAVAll.txt has NO history — only "today". History is built by accumulating
-  daily runs. For a full 20-year archive on day one, run scripts/seed_history_amfi.py
-  once (pulls year-end NAVs from AMFI's own history report — no mfapi dependency).
+- AMFI NAVAll.txt has NO history — only "today". History comes from the seed
+  (tarball or seed_history_amfi.py); the daily build keeps it current.
 - Everything is deterministic and idempotent: re-running on the same day updates
   today's point in place, never duplicates.
 """
@@ -108,6 +108,32 @@ def load_json(path, default):
     return default
 
 
+def ingest_seed_tarball():
+    """One-time backfill: if data/history-seed.tar.gz exists, extract it into data/
+    (it contains a history/ dir of per-scheme point files). This is how a large
+    pre-built 20-year archive gets loaded without committing 30k+ individual files.
+    Existing history/ files are never overwritten, so this is safe to leave in place."""
+    import tarfile
+    tb = os.path.join(ROOT, "data", "history-seed.tar.gz")
+    if not os.path.exists(tb):
+        return 0
+    before = len(os.listdir(HIST_DIR)) if os.path.isdir(HIST_DIR) else 0
+    try:
+        with tarfile.open(tb, "r:gz") as t:
+            for m in t.getmembers():
+                if not m.name.startswith("history/") or not m.isfile():
+                    continue
+                dest = os.path.join(ROOT, "data", m.name)
+                if os.path.exists(dest):
+                    continue
+                t.extract(m, os.path.join(ROOT, "data"))
+    except Exception as e:
+        print(f"  seed tarball extract failed: {e}", file=sys.stderr)
+        return 0
+    after = len(os.listdir(HIST_DIR)) if os.path.isdir(HIST_DIR) else 0
+    return after - before
+
+
 def ingest_seed():
     """One-time backfill: read any data/seed/<code>.json (mfapi shape) into history."""
     if not os.path.isdir(SEED_DIR):
@@ -137,6 +163,9 @@ def ingest_seed():
 
 def main():
     print(f"[{datetime.now(IST).isoformat()}] Building NAV mirror…")
+    tb_seeded = ingest_seed_tarball()
+    if tb_seeded:
+        print(f"  extracted {tb_seeded} scheme histories from history-seed.tar.gz")
     seeded = ingest_seed()
     if seeded:
         print(f"  seeded history for {seeded} schemes")
