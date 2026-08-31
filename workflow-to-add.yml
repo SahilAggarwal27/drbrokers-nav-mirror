@@ -1,0 +1,64 @@
+# ================================================================
+# MOVE THIS FILE to .github/workflows/build-nav.yml
+# (The API connector can't write to .github/workflows/ — needs a special scope —
+#  so it was pushed here. In the browser: create .github/workflows/build-nav.yml
+#  and paste this content, then delete this file.)
+# ================================================================
+name: Build NAV mirror
+
+on:
+  schedule:
+    # AMFI posts NAVs by ~23:00 IST on business days. Run 00:30 IST (19:00 UTC prev day)
+    # and again 08:00 IST (02:30 UTC) as a catch-up for late/holiday posts.
+    - cron: "0 19 * * *"
+    - cron: "30 2 * * *"
+  workflow_dispatch: {}   # manual "Run workflow" button
+
+permissions:
+  contents: write   # to commit accumulated history
+  pages: write
+  id-token: write
+
+concurrency:
+  group: build-nav
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build NAV mirror
+        run: python scripts/build_nav.py
+
+      - name: Commit accumulated history
+        run: |
+          git config user.name  "nav-mirror-bot"
+          git config user.email "nav-mirror-bot@users.noreply.github.com"
+          git add data/history docs/mf docs/manifest.json
+          if git diff --cached --quiet; then
+            echo "No NAV changes today."
+          else
+            git commit -m "NAV update $(date -u +%Y-%m-%d)"
+            git push
+          fi
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
