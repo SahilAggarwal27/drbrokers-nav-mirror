@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Builds docs/dash-navs.json for the MF Returns Dashboard: for every Regular-Growth scheme
 in the InertExpert2911 master, its NAV (last trading day on-or-before) at latest, -1M, -3M,
--6M, YTD (2-Jan), -1Y..-10Y — the exact targets the dashboard computes.
+-6M, YTD (2-Jan), -1Y..-10Y, -1W — the exact targets the equity + debt dashboards compute.
 Source: AMFI's own historical NAV report, one short window per target date (~15 requests),
 so the browser makes ONE request instead of ~1,300 mfapi calls. If AMFI fails, the
 previously published file is reused so the dashboard never goes blank."""
@@ -74,6 +74,7 @@ def run(root):
         keys = ["latest", "m1", "m3", "m6", "ytd"] + [f"y{i}" for i in range(1, 11)]
         tdates = [latest, js_add_months(latest, -1), js_add_months(latest, -3), js_add_months(latest, -6),
                   date(latest.year, 1, 2)] + [js_add_months(latest, -12 * i) for i in range(1, 11)]
+        keys.append("w1"); tdates.append(latest - timedelta(days=7))  # debt dashboard 1W
         snaps = [cur] + [window_navs(t, want) for t in tdates[1:]]
         f = {}
         for c, (d, v) in cur.items():
