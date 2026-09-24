@@ -243,12 +243,14 @@ def main():
 
     print(f"  wrote {written} scheme files to docs/mf/")
     write_snapshots()
-    try:
-        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-        import patch_sector_page
-        patch_sector_page.run(ROOT)
-    except Exception as e:
-        print(f"  sector-cycle page skipped: {e}", file=sys.stderr)
+    # Extra published assets/pages. Each is isolated: one failing never breaks the mirror.
+    import importlib
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    for mod in ("patch_sector_page", "build_dash_navs", "patch_dashboard_page"):
+        try:
+            importlib.import_module(mod).run(ROOT)
+        except Exception as e:
+            print(f"  {mod} skipped: {e}", file=sys.stderr)
     print("  done.")
 
 
