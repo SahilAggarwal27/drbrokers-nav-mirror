@@ -243,6 +243,12 @@ def main():
 
     print(f"  wrote {written} scheme files to docs/mf/")
     write_snapshots()
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import patch_sector_page
+        patch_sector_page.run(ROOT)
+    except Exception as e:
+        print(f"  sector-cycle page skipped: {e}", file=sys.stderr)
     print("  done.")
 
 
