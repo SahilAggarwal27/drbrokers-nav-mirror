@@ -136,6 +136,11 @@ async function primeNavHistory(codes, onProgress, force=false){
 ('''Data: AMFI end-of-year NAVs (2007 onwards) via <a href="https://github.com/mfapi.in" style="color:var(--accent)">mfapi.in</a>.''','''Data: AMFI end-of-year NAVs (2007 onwards) via the DR Brokers AMFI NAV mirror (sector funds' daily history via <a href="https://github.com/mfapi.in" style="color:var(--accent)">mfapi.in</a>).'''),
 
 ('const CACHE_KEY = "mf_sector_cycle_v72_mfapi";', 'const CACHE_KEY = "mf_sector_cycle_v73_snap";'),
+
+# Heat map: show the ACTUAL calendar-year return first; the gap vs Nifty 50 goes
+# underneath as a small "vs Nifty" line. Cell colour still follows the gap.
+('''      html += `<td class='${cls}' title='${title}'>${rel==null?"":fmtPct(rel)}</td>`;''',
+ '''      html += `<td class='${cls}' title='${title}'>${ret==null?"":fmtPct(ret)+`<div style="font-size:9px;font-weight:500;opacity:.75;margin-top:1px">${rel==null?"":"vs N "+fmtPct(rel)}</div>`}</td>`;'''),
 ]
 REQUIRED = {1, 3}  # the page is only worth publishing if the loader + fetch block are patched
 
