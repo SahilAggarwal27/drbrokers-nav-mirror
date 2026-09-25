@@ -124,6 +124,13 @@ def run(root):
         with open(p, "w") as f:
             json.dump(doc, f, separators=(",", ":"))
     print(f"  index-tri.json written ({len(out)} indices)")
+    # Segment / sector selection signals (dry + cheap + turning). Isolated.
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import build_sector_signals
+        build_sector_signals.run(root)
+    except Exception as e:
+        print(f"  build_sector_signals skipped: {e}")
     return True
 
 if __name__ == "__main__":
