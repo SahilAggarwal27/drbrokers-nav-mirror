@@ -285,6 +285,12 @@ async function renderComboView(){
 
 // Tab click handler — wire all view-tab buttons to switchView'''),
 ]
+# Sector Track Record: clickable rows expand each sector's dry periods (scripts/wl_patches.py).
+try:
+    from wl_patches import WL_PATCHES
+    PATCHES += WL_PATCHES
+except Exception as e:
+    print(f"  wl_patches skipped: {e}")
 REQUIRED = {1, 3}  # the page is only worth publishing if the loader + fetch block are patched
 
 
