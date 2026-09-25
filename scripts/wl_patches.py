@@ -173,3 +173,24 @@ WL_PATCHES += [
 (r"""<th class='num'>Dry Streaks</th><th class='num'>Hits</th>""", r"""<th class='num'>Dry Years<br><span style='font-size:9px;font-weight:400'>entry points</span></th><th class='num'>Hits</th>"""),
 (r"""Which sectors reliably bounce back after dry streaks vs which just stay weak.""", r"""If you bought this sector at the end of any year it was lagging Nifty, how often did the next year beat Nifty by &gt;2%? (No hindsight — compare with the baseline card above.)"""),
 ]
+
+# ── Sort by action (25-Sep-2026): ENTER → WAIT FOR TURN (dry + at historical-low P/E) → WATCH → NEUTRAL → HOLD → AVOID ──
+# Ties: cheaper P/E (lower z) first, then the old dry-streak order.
+WL_PATCHES += [
+(r'''function _actionSignalRaw(secId, data){''', r'''function _actRank(secId, data){
+  let a; try { a = actionSignal(secId, data); } catch(e){ return 99; }
+  const L = (a && a.label) || "";
+  const base = /ENTER/.test(L) ? 0 : /WAIT FOR TURN/.test(L) ? 1 : /WATCH \(cheap\)/.test(L) ? 2 : /WATCH/.test(L) ? 3
+    : /STRONG/.test(L) ? 0 : /NEUTRAL/.test(L) ? 4 : /HOLD/.test(L) ? 5 : /EXPENSIVE/.test(L) ? 6 : /AVOID|EXIT|TRIM/.test(L) ? 7 : 8;
+  const s = _SIGCALLS && _SIGMAP[secId] ? _SIGCALLS[_SIGMAP[secId]] : null;
+  const z = s && s.pe_z != null ? s.pe_z : 0;
+  return base + Math.max(-0.49, Math.min(0.49, z / 10));
+}
+function _actionSignalRaw(secId, data){'''),
+(r'''  rows.sort((a,b) => (order[a.verdict.tag]??9) - (order[b.verdict.tag]??9) || b.streak - a.streak);''',
+ r'''  rows.sort((a,b) => (_actRank(a.sec.id, d) - _actRank(b.sec.id, d)) || (order[a.verdict.tag]??9) - (order[b.verdict.tag]??9) || b.streak - a.streak);'''),
+(r'''  ranked.sort((a,b) => b.score - a.score);
+  // Show all with score > 25, capped at 10''',
+ r'''  ranked.sort((a,b) => (_actRank(a.sec.id, d) - _actRank(b.sec.id, d)) || b.score - a.score);
+  // Show all with score > 25, capped at 10'''),
+]
