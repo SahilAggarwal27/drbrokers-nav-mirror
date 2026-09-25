@@ -66,3 +66,26 @@ WL_PATCHES = [
 (r'''wlBox.innerHTML = wlHead + "<tbody>" + wlBody + "</tbody>";''',
  r'''wlBox.innerHTML = "<caption style='caption-side:top;text-align:right;padding:0 0 6px;font-size:11px'><a href='javascript:void(0)' onclick='wlToggleAll(true)' style='color:var(--accent)'>Expand all</a> · <a href='javascript:void(0)' onclick='wlToggleAll(false)' style='color:var(--accent)'>Collapse all</a></caption>" + wlHead + "<tbody>" + wlBody + "</tbody>";'''),
 ]
+
+# ── Tab cleanup (25-Sep-2026): drop Contra Funds, Valuation (covered by Sector Signal),
+# Client Advisor, SIP Plan, Track Record, Research Archive; merge Broadcast + Newsletter.
+# Views stay in the DOM (hidden) so any internal code that references them keeps working.
+TAB_PATCHES = [
+(r'''    <button class="view-tab" data-view="contrafunds">💎 Contra Funds</button>
+''', ''),
+(r'''    <button class="view-tab" data-view="valuation">💰 Valuation</button>
+    <button class="view-tab" data-view="advisor">👥 Client Advisor</button>
+    <button class="view-tab" data-view="broadcast">📣 Broadcast</button>
+    <button class="view-tab" data-view="newsletter">📰 Newsletter</button>
+''', r'''    <button class="view-tab" data-view="broadcast">📣 Broadcast &amp; Newsletter</button>
+'''),
+(r'''    <button class="view-tab" data-view="sipplan">⏱ SIP Plan</button>
+    <button class="view-tab" data-view="track">📋 Track Record</button>
+    <button class="view-tab" data-view="archive">📸 Research Archive</button>
+''', ''),
+(r'''  $("newsletterView").style.display = v==="newsletter" ? "block" : "none";
+  if(v === "newsletter") setTimeout(restoreNewsletter, 50);''',
+ r'''  $("newsletterView").style.display = (v==="newsletter"||v==="broadcast") ? "block" : "none";
+  if(v === "newsletter" || v === "broadcast") setTimeout(restoreNewsletter, 50);'''),
+]
+WL_PATCHES += TAB_PATCHES
