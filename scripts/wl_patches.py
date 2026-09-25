@@ -41,6 +41,8 @@ WL_PATCHES = [
         const a2 = (s2!=null && b2!=null) ? s2-b2 : null;
         const a3 = (s3!=null && b3!=null) ? s3-b3 : null;
         const ytd = dp.end + 1 >= _wlCY;
+        let eh = 0, en = 0;
+        for(let y=dp.start; y<=dp.end; y++){ const fs = fwdCAGR(secId, y, 1), fb = fwdCAGRBench(y, 1); if(fs!=null && fb!=null){ en++; if(fs-fb > 2) eh++; } }
         let res;
         if(a1 == null) res = "<span style='color:#60a5fa;font-weight:800'>● Ongoing</span>";
         else res = (a1 > 2 ? "<span style='color:var(--good);font-weight:800'>✓ Bounced</span>" : "<span style='color:var(--bad);font-weight:800'>✗ Trap</span>")
@@ -51,9 +53,9 @@ WL_PATCHES = [
           + _wlTD(_wlF(cum), "right")
           + _wlTD(_wlF(s1)+(ytd&&s1!=null?"<sup style='color:#60a5fa'>ytd</sup>":""), "right") + _wlTD(_wlF(b1), "right")
           + _wlTD(_wlF(a1), "right") + _wlTD(_wlF(a2), "right") + _wlTD(_wlF(a3), "right")
-          + _wlTD(res) + "</tr>";
+          + _wlTD(res + (en ? "<div style='font-size:10.5px;color:var(--muted);margin-top:2px'>Bought in any dry year: <b style='color:"+(eh/en>=0.6?"var(--good)":eh/en>=0.4?"var(--warn)":"var(--bad)")+"'>"+eh+"/"+en+" won</b></div>" : "")) + "</tr>";
       }
-      t += "</tbody></table><div style='font-size:10.5px;color:var(--muted);margin-top:6px'>Dry = lagged Nifty 50 by &gt;2% for consecutive years. Bounced = next calendar year beat Nifty by &gt;2%. 2Y/3Y = forward CAGR minus Nifty CAGR.</div>";
+      t += "</tbody></table><div style='font-size:10.5px;color:var(--muted);margin-top:6px'>Dry = lagged Nifty 50 by &gt;2% for consecutive years. Bounced/Trap = what happened after the streak ended (hindsight — you only know the end afterwards). <b>Bought in any dry year</b> = the honest test: buy at each dry year-end, win if the next year beat Nifty by &gt;2%. Hit rates above use this honest test.</div>";
       return "<tr class='wl-detail' style='display:none'><td colspan='8' style='padding:10px 16px 14px 34px;background:rgba(124,92,255,.04)'>" + t + "</td></tr>";
     }'''),
 
@@ -98,4 +100,76 @@ WL_PATCHES += [
 ''', r'''    <button class="view-tab on" data-view="heatmap">📊 Performance Matrix</button>
     <button class="view-tab" data-view="cycle">📋 Cycle Summary</button>
 '''),
+]
+
+# ── Honest backtest + one source of truth (25-Sep-2026) ──
+# 1) Old test was circular: a dry streak "ends" the year before the sector stops lagging, so
+#    "next year beat Nifty" was ~guaranteed (every sector showed 100%). Now EVERY dry year is an
+#    entry point (you can't know the streak is ending) and we test the following year.
+#    All hit rates, analogs, playbook buckets and verdicts use these entry points.
+# 2) Sector Contra / Exit Watch / Broadcast actions follow the Sector Signal call
+#    (NSE index TRI + P/E + turning, monthly since 2016). Sectors with no NSE index are capped at WATCH.
+HONEST_PATCHES = [
+(r'''    cycles[sec.id] = analyzeCycles(relByYear[sec.id] || {});
+  }
+''', r'''    cycles[sec.id] = analyzeCycles(relByYear[sec.id] || {});
+  }
+  // Point-in-time entry points: every year a sector was dry = a moment you could have bought.
+  const entries = {};
+  for(const id in cycles){
+    entries[id] = [];
+    for(const c of cycles[id]) for(let y=c.start; y<=c.end; y++) entries[id].push({ start:c.start, end:y, len:y-c.start+1, streakEnd:c.end });
+  }
+'''),
+(r'''    for(const d of cycles[sec.id]){''', r'''    for(const d of entries[sec.id]){'''),
+(r'''    for(const dp of (cycles[sec.id] || [])){''', r'''    for(const dp of (entries[sec.id] || [])){'''),
+(r'''  const data = { indexUsed, sectorFunds, expandedSectors,''', r'''  const data = { entries, indexUsed, sectorFunds, expandedSectors,'''),
+(r'''const dryArr = (d.cycles && d.cycles[secId]) || [];''', r'''const dryArr = ((d.entries || d.cycles || {})[secId]) || [];'''),
+(r'''function findAnalogs(currStreakLen, currDD, data){
+  const cycles = data.cycles || {};''', r'''function findAnalogs(currStreakLen, currDD, data){
+  const cycles = data.entries || data.cycles || {};'''),
+(r'''function computePlaybook(data){
+  const cycles = data.cycles || {};''', r'''function computePlaybook(data){
+  const cycles = data.entries || data.cycles || {};'''),
+(r'''    const dryArr = (d.cycles[sec.id] || []);''', r'''    const dryArr = ((d.entries || d.cycles)[sec.id] || []);'''),
+(r'''card("Total dry streaks tested", rows.length, "across "+sectors.length+" sectors"),''',
+ r'''card("Entry points tested", rows.length, "every dry year, "+sectors.length+" sectors — no hindsight"),
+    (function(){ let h=0,n=0; for(const s of sectors){ const r=(d.returnsByYear||{})[s.id]||{}; for(const y in r){ const b=benchRet[y]; if(r[y]!=null&&b!=null){ n++; if(r[y]-b>2) h++; } } }
+      return card("Baseline — any year", n?(h/n*100).toFixed(0)+"%":"—", "sector beat Nifty by >2%, no signal. Edge = hit rate minus this"); })(),'''),
+('const CACHE_KEY = "mf_sector_cycle_v75_picks";', 'const CACHE_KEY = "mf_sector_cycle_v76_honest";'),
+(r'''function actionSignal(secId, data){''', r'''// ── One source of truth: actions follow the Sector Signal (sector-signals.json) ──
+const _SIGMAP = { smallcap:"small", midcap:"mid", largecap:"large", pharma:"pharma", tech:"it", auto:"auto",
+  banking:"finserv", fmcg:"fmcg", infra:"infra", energy:"energy", defense:"defence", mnc:"mnc" };
+let _SIGCALLS = null, _SIGEV = {};
+fetch("https://sahilaggarwal27.github.io/drbrokers-nav-mirror/sector-signals.json", {cache:"no-cache"})
+  .then(r => r.json()).then(j => { _SIGCALLS = {}; (j.items||[]).forEach(i => { _SIGCALLS[i.id] = i; }); _SIGEV = j.evidence || {};
+    try { if(state && state.data) renderAll(); } catch(e){} }).catch(() => {});
+function _evTxt(k){ const e = _SIGEV[k], b = _SIGEV.ALL; return e ? ` Backtest: beat Nifty ${e.beat_pct}% of ${e.n} cases (baseline ${b?b.beat_pct:"—"}%), avg ${e.avg>=0?"+":""}${e.avg}%.` : ""; }
+function _pct(v){ return v==null ? "—" : (v>=0?"+":"") + Number(v).toFixed(1) + "%"; }
+function actionSignal(secId, data){
+  const raw = _actionSignalRaw(secId, data);
+  const sid = _SIGMAP[secId];
+  const s = sid && _SIGCALLS ? _SIGCALLS[sid] : null;
+  if(!_SIGCALLS) return raw;                       // signal file not loaded yet — first paint only
+  if(!s){
+    if(raw.tag === "strong") return { tag:"watch", label:"🟡 WATCH", color:"var(--warn)",
+      reason:"No NSE index to validate (fund proxy only) — capped at WATCH. Old model: " + raw.reason };
+    return raw;
+  }
+  const facts = `P/E z ${s.pe_z!=null?(s.pe_z>0?"+":"")+s.pe_z.toFixed(1):"—"} · 3M ${_pct(s.rel3)} / 6M ${_pct(s.rel6)} / 24M ${_pct(s.rel24)} vs Nifty.`;
+  const c = s.call || "";
+  if(c.startsWith("ENTER")) return { tag:"strong", label:"🟢 ENTER", color:"var(--good)", reason:"Dry + cheap + turning. " + facts + _evTxt("ENTER") };
+  if(c.startsWith("WAIT")) return { tag:"watch", label:"🟡 WAIT FOR TURN", color:"var(--warn)", reason:"Dry + cheap but still falling — hold, SIP only, no lumpsum. " + facts + _evTxt("WAIT FOR TURN") };
+  if(c.startsWith("WATCH")) return { tag:"watch", label:"🟡 WATCH (cheap)", color:"var(--warn)", reason:"Cheap, not yet dry/turning. " + facts + _evTxt("WATCH (cheap)") };
+  if(c.startsWith("AVOID")) return { tag:"exit", label:"🔴 AVOID / TRIM", color:"var(--bad)", reason:"Big 24M lead + P/E above average — trim, no fresh money. " + facts + _evTxt("AVOID / TRIM") };
+  if(c.startsWith("EXPENSIVE")) return { tag:"avoid", label:"⚫ EXPENSIVE", color:"var(--muted)", reason:"No new money. " + facts + _evTxt("EXPENSIVE — NO NEW MONEY") };
+  if(raw.tag === "exit" || raw.tag === "avoid" || raw.tag === "hold") return raw;
+  return { tag:"hold", label:"🟠 NEUTRAL", color:"#60a5fa", reason:"No edge now — hold existing, no fresh contra money. " + facts };
+}
+function _actionSignalRaw(secId, data){'''),
+]
+WL_PATCHES += HONEST_PATCHES
+WL_PATCHES += [
+(r"""<th class='num'>Dry Streaks</th><th class='num'>Hits</th>""", r"""<th class='num'>Dry Years<br><span style='font-size:9px;font-weight:400'>entry points</span></th><th class='num'>Hits</th>"""),
+(r"""Which sectors reliably bounce back after dry streaks vs which just stay weak.""", r"""If you bought this sector at the end of any year it was lagging Nifty, how often did the next year beat Nifty by &gt;2%? (No hindsight — compare with the baseline card above.)"""),
 ]
