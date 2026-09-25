@@ -135,7 +135,7 @@ async function primeNavHistory(codes, onProgress, force=false){
 
 ('''Data: AMFI end-of-year NAVs (2007 onwards) via <a href="https://github.com/mfapi.in" style="color:var(--accent)">mfapi.in</a>.''','''Data: AMFI end-of-year NAVs (2007 onwards) via the DR Brokers AMFI NAV mirror (sector funds' daily history via <a href="https://github.com/mfapi.in" style="color:var(--accent)">mfapi.in</a>).'''),
 
-('const CACHE_KEY = "mf_sector_cycle_v72_mfapi";', 'const CACHE_KEY = "mf_sector_cycle_v74_idx";'),
+('const CACHE_KEY = "mf_sector_cycle_v72_mfapi";', 'const CACHE_KEY = "mf_sector_cycle_v75_picks";'),
 
 # Heat map: show the ACTUAL calendar-year return first; the gap vs Nifty 50 goes
 # underneath as a small "vs Nifty" line. Cell colour still follows the gap.
@@ -173,6 +173,20 @@ async function primeNavHistory(codes, onProgress, force=false){
       }
     }
   } catch(e){ console.warn("Index TRI load failed — falling back to funds", e); }
+  // Automated fund picks (Regular Growth, scored vs the sector's own index; built daily).
+  try {
+    const pr = await fetch("https://sahilaggarwal27.github.io/drbrokers-nav-mirror/fund-picks.json", {cache:"no-cache"});
+    if(pr.ok){
+      const pj = await pr.json();
+      for(const sid in (pj.sectors||{})){
+        const p = pj.sectors[sid];
+        if(!indexUsed[sid]) continue;
+        indexUsed[sid].picks = (p.picks||[]).map(f => ({ name: f.name, hit: f.roll3_hit, edge: f.roll3_edge }));
+        indexUsed[sid].fallback = p.fallback_index_fund ? p.fallback_index_fund.name : null;
+        indexUsed[sid].passing = p.passing; indexUsed[sid].universe = p.universe;
+      }
+    }
+  } catch(e){ console.warn("Fund picks load failed", e); }
 
   const relByYear = {};
 '''),
@@ -182,7 +196,7 @@ async function primeNavHistory(codes, onProgress, force=false){
 ('''      rowHeading = `${sec.label}${indexBadge}<br><span style="font-size:9.5px;color:var(--muted);font-weight:400">${fundLabel}</span>`;''',
  '''      const _iu = (d.indexUsed||{})[sec.id];
       rowHeading = _iu
-        ? `${sec.label} <span style="background:rgba(16,185,129,.18);color:var(--good);font-size:8px;font-weight:800;padding:1px 5px;border-radius:99px;letter-spacing:.4px">NSE TRI</span><br><span style="font-size:9.5px;color:var(--muted);font-weight:400">${_iu.name}${_iu.proxyYears.length?` · fund proxy ${String(_iu.proxyYears[0]).slice(2)}–${String(_iu.proxyYears[_iu.proxyYears.length-1]).slice(2)}`:""}</span>`
+        ? `${sec.label} <span style="background:rgba(16,185,129,.18);color:var(--good);font-size:8px;font-weight:800;padding:1px 5px;border-radius:99px;letter-spacing:.4px">NSE TRI</span><br><span style="font-size:9.5px;color:var(--muted);font-weight:400">${_iu.name}${_iu.proxyYears.length?` · fund proxy ${String(_iu.proxyYears[0]).slice(2)}–${String(_iu.proxyYears[_iu.proxyYears.length-1]).slice(2)}`:""}</span>${(_iu.picks&&_iu.picks.length)||_iu.fallback?`<br><span style="font-size:9.5px;color:var(--good);font-weight:600" title="Auto-picked Regular Growth funds: beat ${_iu.name} TRI in ≥60% of rolling 3Y windows. ${_iu.passing||0} of ${_iu.universe||0} funds pass. Recent returns are not used.">★ ${(_iu.picks&&_iu.picks.length)?_iu.picks.map(p=>p.name.replace(/\s*(Regular Plan|Regular|Growth|Option|Fund|Plan|-)\\b/gi," ").replace(/\s+/g," ").trim().slice(0,26)+" ("+Math.round(p.hit*100)+"%)").join(" · "):"Index fund: "+_iu.fallback.replace(/\s*(Regular Plan|Growth|Option|Plan|-)\\b/gi," ").replace(/\s+/g," ").trim().slice(0,34)}</span>`:""}`
         : `${sec.label}${indexBadge}<br><span style="font-size:9.5px;color:var(--muted);font-weight:400">${fundLabel}</span>`;'''),
 ]
 REQUIRED = {1, 3}  # the page is only worth publishing if the loader + fetch block are patched
@@ -198,6 +212,11 @@ def run(root):
         build_index_tri.run(root)
     except Exception as e:
         print(f"  build_index_tri skipped: {e}")
+    try:
+        import build_fund_picks
+        build_fund_picks.run(root)
+    except Exception as e:
+        print(f"  build_fund_picks skipped: {e}")
     req = urllib.request.Request(SRC_URL, headers={"User-Agent": "drbrokers-nav-mirror/1.0"})
     with urllib.request.urlopen(req, timeout=60) as r:
         s = r.read().decode("utf-8")
