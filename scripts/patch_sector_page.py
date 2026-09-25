@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Builds docs/sector-cycle.html: pulls the live Sector Cycle page from tools.drbrokers.in
+"""Builds docs/sector-cycle.html (index-first since 25-Sep-2026): pulls the live Sector Cycle page from tools.drbrokers.in
 and patches it to load year-end NAVs from ONE mirror file (snapshots.json) instead of
 ~16k per-fund mfapi calls. Only the ~60 chosen sector funds still get full daily history
 from mfapi (2006 anchor + momentum). Runs inside the daily mirror build."""
@@ -135,17 +135,69 @@ async function primeNavHistory(codes, onProgress, force=false){
 
 ('''Data: AMFI end-of-year NAVs (2007 onwards) via <a href="https://github.com/mfapi.in" style="color:var(--accent)">mfapi.in</a>.''','''Data: AMFI end-of-year NAVs (2007 onwards) via the DR Brokers AMFI NAV mirror (sector funds' daily history via <a href="https://github.com/mfapi.in" style="color:var(--accent)">mfapi.in</a>).'''),
 
-('const CACHE_KEY = "mf_sector_cycle_v72_mfapi";', 'const CACHE_KEY = "mf_sector_cycle_v73_snap";'),
+('const CACHE_KEY = "mf_sector_cycle_v72_mfapi";', 'const CACHE_KEY = "mf_sector_cycle_v74_idx";'),
 
 # Heat map: show the ACTUAL calendar-year return first; the gap vs Nifty 50 goes
 # underneath as a small "vs Nifty" line. Cell colour still follows the gap.
 ('''      html += `<td class='${cls}' title='${title}'>${rel==null?"":fmtPct(rel)}</td>`;''',
- '''      html += `<td class='${cls}' title='${title}'>${ret==null?"":fmtPct(ret)+`<div style="font-size:9px;font-weight:500;opacity:.75;margin-top:1px">${rel==null?"":"vs N "+fmtPct(rel)}</div>`}</td>`;'''),
+ '''      const _px = (((d.indexUsed||{})[sec.id]||{}).proxyYears||[]).includes(y);
+      html += `<td class='${cls}' title='${title}${_px?" · fund proxy (index not yet available)":""}'${_px?" style='outline:1px dashed rgba(255,255,255,.4);outline-offset:-4px'":""}>${ret==null?"":fmtPct(ret)+`<div style="font-size:9px;font-weight:500;opacity:.75;margin-top:1px">${rel==null?"":"vs N "+fmtPct(rel)}</div>`}</td>`;'''),
+
+# INDEX-FIRST: every sector with an NSE index uses its TRI (niftyindices, back-calculated,
+# rebuilt daily into index-tri.json). Fund returns stay only for years before the index
+# existed (marked "fund proxy") and for sectors with no NSE index (intl, gold, quant...).
+('''  const relByYear = {};
+''', '''  // ── Index-first returns: NSE TRI overrides the fund wherever the index has data ──
+  const INDEX_TRI_URL = "https://sahilaggarwal27.github.io/drbrokers-nav-mirror/index-tri.json";
+  const SECTOR_INDEX = { benchmark:"nifty50", smallcap:"smallcap250", midcap:"midcap150", largecap:"nifty100",
+    flexicap:"nifty500", pharma:"pharma", tech:"it", auto:"auto", banking:"finserv", fmcg:"fmcg",
+    infra:"infra", energy:"energy", defense:"defence", mnc:"mnc" };
+  const indexUsed = {};
+  try {
+    const ir = await fetch(INDEX_TRI_URL, {cache:"no-cache"});
+    if(ir.ok){
+      const ij = await ir.json();
+      const curY = new Date().getFullYear();
+      for(const sec of expandedSectors){
+        const iid = SECTOR_INDEX[sec.id]; if(!iid) continue;
+        const ix = ij.i && ij.i[iid]; if(!ix) continue;
+        const lv = {};
+        ij.years.forEach((y,k)=>{ if(ix.ye[k]) lv[y] = ix.ye[k]; });
+        if(ix.latest && ix.latest_date && +String(ix.latest_date).slice(0,4) === curY) lv[curY] = ix.latest;
+        let n = 0; const proxyYears = [];
+        for(const y of YEARS){
+          if(lv[y] && lv[y-1]){ returnsByYear[sec.id][y] = (lv[y]/lv[y-1] - 1)*100; n++; }
+          else if(returnsByYear[sec.id][y] != null) proxyYears.push(y);
+        }
+        if(n) indexUsed[sec.id] = { id: iid, name: ix.name, proxyYears };
+      }
+    }
+  } catch(e){ console.warn("Index TRI load failed — falling back to funds", e); }
+
+  const relByYear = {};
+'''),
+
+('''  const data = { sectorFunds, expandedSectors,''', '''  const data = { indexUsed, sectorFunds, expandedSectors,'''),
+
+('''      rowHeading = `${sec.label}${indexBadge}<br><span style="font-size:9.5px;color:var(--muted);font-weight:400">${fundLabel}</span>`;''',
+ '''      const _iu = (d.indexUsed||{})[sec.id];
+      rowHeading = _iu
+        ? `${sec.label} <span style="background:rgba(16,185,129,.18);color:var(--good);font-size:8px;font-weight:800;padding:1px 5px;border-radius:99px;letter-spacing:.4px">NSE TRI</span><br><span style="font-size:9.5px;color:var(--muted);font-weight:400">${_iu.name}${_iu.proxyYears.length?` · fund proxy ${String(_iu.proxyYears[0]).slice(2)}–${String(_iu.proxyYears[_iu.proxyYears.length-1]).slice(2)}`:""}</span>`
+        : `${sec.label}${indexBadge}<br><span style="font-size:9.5px;color:var(--muted);font-weight:400">${fundLabel}</span>`;'''),
 ]
 REQUIRED = {1, 3}  # the page is only worth publishing if the loader + fetch block are patched
 
 
 def run(root):
+    # Refresh NSE sector TRI data first (index-first heat map). Isolated: a failure here
+    # only means the page falls back to fund returns.
+    try:
+        import sys
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import build_index_tri
+        build_index_tri.run(root)
+    except Exception as e:
+        print(f"  build_index_tri skipped: {e}")
     req = urllib.request.Request(SRC_URL, headers={"User-Agent": "drbrokers-nav-mirror/1.0"})
     with urllib.request.urlopen(req, timeout=60) as r:
         s = r.read().decode("utf-8")
