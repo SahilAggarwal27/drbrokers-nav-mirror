@@ -147,6 +147,12 @@ def run(root):
     os.makedirs(os.path.dirname(state_p), exist_ok=True)
     with open(state_p, "w") as fh:
         json.dump(state, fh, separators=(",", ":"))
+    # 2-fund combo per diversified category (aggressive + defensive). Isolated.
+    try:
+        import build_fund_combo
+        build_fund_combo.run(root)
+    except Exception as e:
+        print(f"  build_fund_combo skipped: {e}")
     return True
 
 if __name__ == "__main__":
