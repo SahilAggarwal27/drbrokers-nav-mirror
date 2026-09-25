@@ -89,3 +89,13 @@ TAB_PATCHES = [
   if(v === "newsletter" || v === "broadcast") setTimeout(restoreNewsletter, 50);'''),
 ]
 WL_PATCHES += TAB_PATCHES
+
+# ── Tab order (25-Sep-2026): Performance Matrix → Cycle Summary → Sector Signal → Fund Combo ──
+WL_PATCHES += [
+(r'''    <button class="view-tab" data-view="cycle">📋 Cycle Summary</button>
+''', ''),
+(r'''    <button class="view-tab on" data-view="heatmap">📊 Performance Matrix</button>
+''', r'''    <button class="view-tab on" data-view="heatmap">📊 Performance Matrix</button>
+    <button class="view-tab" data-view="cycle">📋 Cycle Summary</button>
+'''),
+]
