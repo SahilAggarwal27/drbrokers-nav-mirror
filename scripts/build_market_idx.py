@@ -34,6 +34,24 @@ def monthly(sym):
             err = e
     raise err
 
+def _sh(m, k):
+    y, mo = map(int, m.split("-")); t = y * 12 + mo - 1 - k
+    return "%d-%02d" % (t // 12, t % 12 + 1)
+
+def market_context(root):
+    """Nifty 50 context for the Cycle Summary: TRI momentum, drawdown from peak, P/E vs its
+    10-yr history. Reads the monthly NSE TRI + P/E cache kept by build_sector_signals.py."""
+    import statistics as st
+    h = json.load(open(os.path.join(root, "data", "history", "_sector_hist.dat")))["nifty50"]
+    T, P = h["tri"], h["pe"]
+    t = max(T); tp = max(P)
+    r = lambda k: round(100 * (T[t] / T[_sh(t, k)] - 1), 1) if _sh(t, k) in T else None
+    dd = lambda k: round(100 * (T[t] / max(v for m, v in T.items() if _sh(t, 12 * k) <= m <= t) - 1), 1)
+    ph = [v for m, v in P.items() if _sh(tp, 120) <= m <= tp]
+    z = (P[tp] - st.mean(ph)) / (st.pstdev(ph) or 1e-9)
+    return {"as_of": t, "r3m": r(3), "r6m": r(6), "r12m": r(12), "dd5y": dd(5), "dd10y": dd(10),
+            "pe": round(P[tp], 1), "pe_median": round(st.median(ph), 1), "pe_z": round(z, 2)}
+
 def run(root):
     pub = os.path.join(root, "docs", "market-idx.json")
     now = datetime.now(IST)
@@ -57,10 +75,16 @@ def run(root):
             if iid in old.get("i", {}): out[iid] = old["i"][iid]
     if not out:
         raise RuntimeError("no market index data")
+    doc = {"v": 1, "generated_ist": now.isoformat(), "source": "Yahoo Finance (^NSEI, ^BSESN), price index",
+           "years": years, "i": out}
+    try:
+        doc["market"] = market_context(root)
+    except Exception as e:
+        print(f"  market context skipped: {e}", file=sys.stderr)
+        if old.get("market"): doc["market"] = old["market"]
     os.makedirs(os.path.dirname(pub), exist_ok=True)
     with open(pub, "w") as f:
-        json.dump({"v": 1, "generated_ist": now.isoformat(), "source": "Yahoo Finance (^NSEI, ^BSESN), price index",
-                   "years": years, "i": out}, f, separators=(",", ":"))
+        json.dump(doc, f, separators=(",", ":"))
     print(f"  market-idx.json written ({len(out)} indices)")
     return True
 
@@ -86,6 +110,7 @@ MKT_PATCHES = [
         for(const y of YEARS){ if(lv[y] && lv[y-1]) r[y] = (lv[y]/lv[y-1] - 1)*100; }
         mktIdx[iid] = { name: ix.name, ret: r, asOf: ix.latest_date };
       }
+      if(mj.market) mktIdx._market = mj.market;
     }
   } catch(e){ console.warn("Market index load failed", e); }
 '''),
@@ -106,7 +131,43 @@ MKT_PATCHES = [
   html += "</tbody>";
   $("heatmap").innerHTML = html;'''),
 
-('const CACHE_KEY = "mf_sector_cycle_v77_sip";', 'const CACHE_KEY = "mf_sector_cycle_v78_mkt";'),
+('const CACHE_KEY = "mf_sector_cycle_v77_sip";', 'const CACHE_KEY = "mf_sector_cycle_v79_mktrow";'),
+
+# Cycle Summary: pinned "Market — Nifty 50" context row (TRI momentum, DD, P/E z). Dry/bounce/verdict
+# columns don't apply to the benchmark itself.
+(r"""  </tr></thead><tbody>`;
+  for(const r of rows){
+    const bExt""",
+ r"""  </tr></thead><tbody>`;
+  (function(){
+    const m = (d.mktIdx||{})._market; if(!m) return;
+    const na = "<span style='color:var(--muted)'>—</span>";
+    const z = m.pe_z;
+    const val = z > 1 ? ["EXPENSIVE","var(--bad)"] : z > 0.5 ? ["ABOVE AVG","var(--warn)"] : z < -1 ? ["CHEAP","var(--good)"] : z < -0.5 ? ["BELOW AVG","var(--good)"] : ["FAIR","#60a5fa"];
+    const sip = z > 1 ? ["▶ CONTINUE","#60a5fa"] : ["✅ CONTINUE / STEP-UP","var(--good)"];
+    const lump = z > 1 ? ["⏳ STP 6–12M only","var(--warn)"] : z < -0.5 ? ["✅ DEPLOY (or STP 3M)","var(--good)"] : ["▶ STP 3–6M","#60a5fa"];
+    const ytd = (((d.mktIdx||{}).nifty50||{}).ret||{})[new Date().getFullYear()];
+    const pc = v => v==null ? "—" : (v>=0?"+":"")+v.toFixed(1)+"%";
+    const S = "background:rgba(96,165,250,.07)";
+    html += `<tr style="${S};border-bottom:2px solid var(--border)">
+      <td style="${S}"><strong>📈 MARKET — Nifty 50</strong><br><span style="font-size:9.5px;color:var(--muted)">context · as of ${m.as_of}</span></td>
+      <td style="color:var(--muted);font-size:11.5px">Nifty 50 TRI (NSE)<br><span style="font-size:10px">benchmark for every row below</span></td>
+      <td class='r'>${sparkline("benchmark")}</td>
+      <td class='r'><span style='color:#60a5fa;font-weight:800;font-size:10px'>📊 PURE INDEX</span></td>
+      <td class='r'>${na}</td><td class='r'>${na}</td>
+      <td class='r' style='font-size:12px'>${fmtDD({dd5y:m.dd5y, dd10y:m.dd10y})}</td>
+      <td class='r'>${na}</td>
+      <td class='r' style='font-size:12px'>${fmtMom({r3m:m.r3m, r6m:m.r6m, r12m:m.r12m})}</td>
+      <td class='r'>${na}</td>
+      <td><span style='font-size:11px;font-weight:800;color:${val[1]};white-space:nowrap'>${val[0]}</span><br><span style='font-size:9.5px;color:var(--muted);line-height:1.3'>P/E ${m.pe} vs 10Y median ${m.pe_median} · z ${z>0?"+":""}${z.toFixed(2)}</span></td>
+      <td><span style='font-size:11px;font-weight:800;color:${ytd==null?"var(--muted)":ytd>=0?"var(--good)":"var(--bad)"}'>YTD ${pc(ytd)}</span><br><span style='font-size:9.5px;color:var(--muted)'>price index</span></td>
+      <td><span style='font-size:11px;font-weight:800;color:${sip[1]};white-space:nowrap'>${sip[0]}</span><br><span style='font-size:9.5px;color:var(--muted)'>core diversified SIPs</span></td>
+      <td><span style='font-size:11px;font-weight:800;color:${lump[1]};white-space:nowrap'>${lump[0]}</span><br><span style='font-size:9.5px;color:var(--muted)'>by Nifty P/E band</span></td>
+      <td class='r'>${na}</td>
+    </tr>`;
+  })();
+  for(const r of rows){
+    const bExt"""),
 ]
 
 
