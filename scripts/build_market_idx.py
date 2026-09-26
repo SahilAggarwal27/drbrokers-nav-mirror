@@ -131,7 +131,7 @@ MKT_PATCHES = [
   html += "</tbody>";
   $("heatmap").innerHTML = html;'''),
 
-('const CACHE_KEY = "mf_sector_cycle_v77_sip";', 'const CACHE_KEY = "mf_sector_cycle_v79_mktrow";'),
+('const CACHE_KEY = "mf_sector_cycle_v77_sip";', 'const CACHE_KEY = "mf_sector_cycle_v80_niftydry";'),
 
 # One Nifty row only: the benchmark row is Nifty 50 TRI (not the UTI fund) — say so.
 (r"""<span style="font-size:9.5px;color:var(--muted);font-weight:400">${bFund?bFund.schemeName.slice(0,24)+"…":'—'}</span></th>`;""",
@@ -144,29 +144,55 @@ MKT_PATCHES = [
     const bExt""",
  r"""  </tr></thead><tbody>`;
   (function(){
+    // Nifty 50 rating — 3 checks: CHEAP (P/E z ≤ -0.5 vs 10Y), CORRECTED (≥10% off 5Y peak),
+    // DRY (calendar-year TRI return < 7% ≈ FD, i.e. equity paid less than debt; YTD counts if < 0).
     const m = (d.mktIdx||{})._market; if(!m) return;
     const na = "<span style='color:var(--muted)'>—</span>";
+    const R = (d.returnsByYear||{}).benchmark || {};
+    const cy = new Date().getFullYear(), HURDLE = 7;
+    const isDry = y => R[y] != null && (y === cy ? R[y] < 0 : R[y] < HURDLE);
+    // dry streaks + current streak
+    const streaks = []; let st0 = null;
+    for(const y of YEARS){ if(isDry(y)){ if(st0==null) st0 = y; } else if(st0!=null){ streaks.push([st0, y-1]); st0 = null; } }
+    if(st0!=null) streaks.push([st0, YEARS[YEARS.length-1]]);
+    const cur = st0!=null ? YEARS[YEARS.length-1] - st0 + 1 : 0;
+    const lens = streaks.map(s => s[1]-s[0]+1);
+    const avgDry = lens.length ? lens.reduce((a,b)=>a+b,0)/lens.length : 0, maxDry = lens.length ? Math.max(...lens) : 0;
+    // after-dry: buy at the end of EVERY dry year (no hindsight), forward 1/2/3Y CAGR on completed years
+    const fwd = (y,k) => { let g = 1; for(let t=y+1; t<=y+k; t++){ if(R[t]==null || t>=cy) return null; g *= 1 + R[t]/100; } return (Math.pow(g, 1/k) - 1)*100; };
+    const ent = YEARS.filter(y => y < cy && isDry(y));
+    const av = k => { const v = ent.map(y => fwd(y,k)).filter(x => x!=null); return v.length ? v.reduce((a,b)=>a+b,0)/v.length : null; };
+    const f1 = ent.map(y => fwd(y,1)).filter(x => x!=null);
+    const bExt = { count: f1.length, avg1y: av(1), avg2y: av(2), avg3y: av(3) };
+    const won = f1.filter(x => x > HURDLE).length;
     const z = m.pe_z;
+    const cheap = z <= -0.5, corrected = m.dd5y <= -10, dry = cur >= 1;
+    const hits = [cheap, corrected, dry].filter(Boolean).length;
+    let v;
+    if(z > 1 && !corrected) v = { t:"🔴 EXPENSIVE", c:"var(--bad)", sip:["▶ CONTINUE","#60a5fa"], lump:["⏳ STP 6–12M only","var(--warn)"] };
+    else if(hits === 3) v = { t:"🟢 GOOD TO BUY", c:"var(--good)", sip:["✅ START / STEP-UP","var(--good)"], lump:["✅ DEPLOY (or STP 3M)","var(--good)"] };
+    else if(hits === 2) v = { t:"🟡 ACCUMULATE", c:"var(--warn)", sip:["✅ STEP-UP","var(--good)"], lump:["▶ STP 3–6M","#60a5fa"] };
+    else v = { t:"🔵 FAIR", c:"#60a5fa", sip:["▶ CONTINUE","#60a5fa"], lump:["▶ STP 6M","#60a5fa"] };
     const val = z > 1 ? ["EXPENSIVE","var(--bad)"] : z > 0.5 ? ["ABOVE AVG","var(--warn)"] : z < -1 ? ["CHEAP","var(--good)"] : z < -0.5 ? ["BELOW AVG","var(--good)"] : ["FAIR","#60a5fa"];
-    const sip = z > 1 ? ["▶ CONTINUE","#60a5fa"] : ["✅ CONTINUE / STEP-UP","var(--good)"];
-    const lump = z > 1 ? ["⏳ STP 6–12M only","var(--warn)"] : z < -0.5 ? ["✅ DEPLOY (or STP 3M)","var(--good)"] : ["▶ STP 3–6M","#60a5fa"];
-    const ytd = (((d.mktIdx||{}).nifty50||{}).ret||{})[new Date().getFullYear()];
-    const pc = v => v==null ? "—" : (v>=0?"+":"")+v.toFixed(1)+"%";
+    const ck = (ok, txt) => `<span style="color:${ok?"var(--good)":"var(--muted)"}">${ok?"✓":"✗"} ${txt}</span>`;
+    const ytd = R[cy];
+    const pc = x => x==null ? "—" : (x>=0?"+":"")+x.toFixed(1)+"%";
     const S = "background:rgba(96,165,250,.07)";
     html += `<tr style="${S};border-bottom:2px solid var(--border)">
       <td style="${S}"><strong>📈 MARKET — Nifty 50</strong><br><span style="font-size:9.5px;color:var(--muted)">context · as of ${m.as_of}</span></td>
       <td style="color:var(--muted);font-size:11.5px">Nifty 50 TRI (NSE)<br><span style="font-size:10px">benchmark for every row below</span></td>
       <td class='r'>${sparkline("benchmark")}</td>
       <td class='r'><span style='color:#60a5fa;font-weight:800;font-size:10px'>📊 PURE INDEX</span></td>
-      <td class='r'>${na}</td><td class='r'>${na}</td>
+      <td class='r' title="Dry year = Nifty TRI return below ${HURDLE}% (≈ FD); current year counts if YTD is negative">${lens.length ? avgDry.toFixed(1)+'y / '+maxDry+'y' : '—'}<br><span style="font-size:9.5px;color:var(--muted)">yr &lt; ${HURDLE}% (FD)</span></td>
+      <td class='r' style='font-size:12px' title="Bought at the end of every dry year; ${won}/${f1.length} next years beat ${HURDLE}%">${fmtBounceCagr(bExt)}<br><span style="font-size:9.5px;color:var(--muted)">${won}/${f1.length} beat FD next yr</span></td>
       <td class='r' style='font-size:12px'>${fmtDD({dd5y:m.dd5y, dd10y:m.dd10y})}</td>
       <td class='r'>${na}</td>
       <td class='r' style='font-size:12px'>${fmtMom({r3m:m.r3m, r6m:m.r6m, r12m:m.r12m})}</td>
-      <td class='r'>${na}</td>
+      <td class='r'>${cur ? `<span style='font-size:15px;font-weight:800;color:${cur>=2?"var(--warn)":"var(--accent)"}'>${cur}y</span><br><span style='font-size:10px;color:var(--muted)'>below FD</span>` : "<span style='color:var(--muted)'>0</span>"}</td>
       <td><span style='font-size:11px;font-weight:800;color:${val[1]};white-space:nowrap'>${val[0]}</span><br><span style='font-size:9.5px;color:var(--muted);line-height:1.3'>P/E ${m.pe} vs 10Y median ${m.pe_median} · z ${z>0?"+":""}${z.toFixed(2)}</span></td>
-      <td><span style='font-size:11px;font-weight:800;color:${ytd==null?"var(--muted)":ytd>=0?"var(--good)":"var(--bad)"}'>YTD ${pc(ytd)}</span><br><span style='font-size:9.5px;color:var(--muted)'>price index</span></td>
-      <td><span style='font-size:11px;font-weight:800;color:${sip[1]};white-space:nowrap'>${sip[0]}</span><br><span style='font-size:9.5px;color:var(--muted)'>core diversified SIPs</span></td>
-      <td><span style='font-size:11px;font-weight:800;color:${lump[1]};white-space:nowrap'>${lump[0]}</span><br><span style='font-size:9.5px;color:var(--muted)'>by Nifty P/E band</span></td>
+      <td><span style='font-size:11.5px;font-weight:800;color:${v.c};white-space:nowrap'>${v.t}</span><br><span style='font-size:9.5px;line-height:1.5'>${ck(cheap,"Cheap (P/E z ≤ -0.5)")}<br>${ck(corrected,"≥10% off peak")}<br>${ck(dry,"Dry (yr < FD)")}</span><br><span style='font-size:9.5px;color:${ytd==null?"var(--muted)":ytd>=0?"var(--good)":"var(--bad)"}'>YTD ${pc(ytd)}</span></td>
+      <td><span style='font-size:11px;font-weight:800;color:${v.sip[1]};white-space:nowrap'>${v.sip[0]}</span><br><span style='font-size:9.5px;color:var(--muted)'>core diversified SIPs</span></td>
+      <td><span style='font-size:11px;font-weight:800;color:${v.lump[1]};white-space:nowrap'>${v.lump[0]}</span><br><span style='font-size:9.5px;color:var(--muted)'>${hits}/3 checks</span></td>
       <td class='r'>${na}</td>
     </tr>`;
   })();
