@@ -119,9 +119,9 @@ MKT_PATCHES = [
 
 (r'''  html += "</tbody>";
   $("heatmap").innerHTML = html;''',
- r'''  for(const [iid, lbl] of [["nifty50","Nifty 50"],["sensex","Sensex"]]){
+ r'''  for(const [iid, lbl] of [["sensex","Sensex"]]){
     const mx = (d.mktIdx||{})[iid]; if(!mx) continue;
-    html += `<tr${iid==="nifty50"?' style="border-top:2px solid var(--border)"':''}><th class='row-label' style='background:var(--panel)'>${lbl} <span style="background:rgba(255,255,255,.08);color:var(--muted);font-size:8px;font-weight:800;padding:1px 5px;border-radius:99px;letter-spacing:.4px">PRICE</span><br><span style="font-size:9.5px;color:var(--muted);font-weight:400">Calendar-year · excl. dividends</span></th>`;
+    html += `<tr><th class='row-label' style='background:var(--panel)'>${lbl} <span style="background:rgba(255,255,255,.08);color:var(--muted);font-size:8px;font-weight:800;padding:1px 5px;border-radius:99px;letter-spacing:.4px">PRICE</span><br><span style="font-size:9.5px;color:var(--muted);font-weight:400">Calendar-year · excl. dividends</span></th>`;
     for(const y of YEARS){
       const ret = mx.ret[y];
       html += `<td class='${ret==null?'empty':'h-mid'}' title='${y}: ${mx.name} ${ret==null?'no data':fmtPct1(ret)}${y===curYr?' (YTD to '+mx.asOf+')':''}' style="background:rgba(255,255,255,.04);color:${ret==null?'inherit':ret>=0?'var(--good)':'var(--bad)'}">${ret==null?"":fmtPct(ret)}</td>`;
@@ -132,6 +132,10 @@ MKT_PATCHES = [
   $("heatmap").innerHTML = html;'''),
 
 ('const CACHE_KEY = "mf_sector_cycle_v77_sip";', 'const CACHE_KEY = "mf_sector_cycle_v79_mktrow";'),
+
+# One Nifty row only: the benchmark row is Nifty 50 TRI (not the UTI fund) — say so.
+(r"""<span style="font-size:9.5px;color:var(--muted);font-weight:400">${bFund?bFund.schemeName.slice(0,24)+"…":'—'}</span></th>`;""",
+ r"""<span style="font-size:9.5px;color:var(--muted);font-weight:400">NSE TRI · incl. dividends</span></th>`;"""),
 
 # Cycle Summary: pinned "Market — Nifty 50" context row (TRI momentum, DD, P/E z). Dry/bounce/verdict
 # columns don't apply to the benchmark itself.
