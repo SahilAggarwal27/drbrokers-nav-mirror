@@ -275,3 +275,14 @@ WL_PATCHES += [
     </style>
     <div class="cycle-scroll"><table class="cycle" id="cycleTable"></table></div>'''),
 ]
+
+# ── Performance Matrix: Nifty 50 + Sensex calendar-year rows — builder + patches in build_market_idx.py ──
+try:
+    import os as _os, build_market_idx as _bm
+    try:
+        _bm.run(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
+    except Exception as _e:
+        print(f"  build_market_idx skipped: {_e}")
+    WL_PATCHES += _bm.MKT_PATCHES
+except Exception as _e:
+    print(f"  market-idx patches skipped: {_e}")
