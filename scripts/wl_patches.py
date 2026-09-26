@@ -261,3 +261,17 @@ function _actionSignalRaw(secId, data){'''),
 ('const CACHE_KEY = "mf_sector_cycle_v76_honest";', 'const CACHE_KEY = "mf_sector_cycle_v77_sip";'),
 ]
 WL_PATCHES += SIP_PATCHES
+
+# ── Cycle Summary: frozen header + frozen Sector column while scrolling (26-Sep-2026) ──
+# table.cycle has overflow:hidden (breaks sticky), so wrap it in its own scroll box.
+WL_PATCHES += [
+(r'''    <table class="cycle" id="cycleTable"></table>''',
+ r'''    <style>
+      .cycle-scroll{max-height:calc(100vh - 120px);overflow:auto;border:1px solid var(--border);border-radius:12px;background:var(--panel)}
+      .cycle-scroll table.cycle{border:0;border-radius:0;overflow:visible}
+      .cycle-scroll table.cycle thead th{position:sticky;top:0;z-index:3;background:var(--panel2);box-shadow:inset 0 -1px 0 var(--border)}
+      .cycle-scroll table.cycle thead th:first-child{left:0;z-index:4}
+      .cycle-scroll table.cycle tbody td:first-child{position:sticky;left:0;z-index:2;background:var(--panel);box-shadow:inset -1px 0 0 var(--border)}
+    </style>
+    <div class="cycle-scroll"><table class="cycle" id="cycleTable"></table></div>'''),
+]
