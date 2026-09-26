@@ -5,7 +5,7 @@ Source: Yahoo Finance monthly bars (^NSEI, ^BSESN); Dec-2006 anchors seeded
 (Yahoo's Nifty series starts Sep-2007).
 Shape: {"v":1,"generated_ist":..,"years":[2006..],"i":{id:{"name":..,"ye":[close|0,..],
         "latest":close,"latest_date":"YYYY-MM-DD"}}}"""
-import os, sys, json, urllib.request
+import os, sys, json, time, urllib.request
 from datetime import datetime, timedelta, timezone
 
 IST = timezone(timedelta(hours=5, minutes=30))
@@ -80,7 +80,7 @@ def _rate(c):
     return "FAIR", "CONTINUE", "STP 6M", hits
 
 _ROOT = []
-def market_context(root):
+def market_context(root, pk=None):
     """Per broad index: TRI momentum, drawdown, P/E z (10Y), earnings-yield vs 10Y G-sec gap,
     calendar-year dry periods (TRI < HURDLE), after-dry returns, and the 4-check rating."""
     if not _ROOT: _ROOT.append(root)
@@ -131,7 +131,8 @@ def market_context(root):
             ent = [y for y in yrs if y < cy and isdry(y)]
             av = lambda k: (lambda v: round(st.mean(v), 1) if v else None)([x for x in (fwd(y, k) for y in ent) if x is not None])
             f1 = [x for x in (fwd(y, 1) for y in ent) if x is not None]
-            c = {"pe_z": z, "cheap": z <= -0.5, "corrected": dd(5) <= -10, "dry": cur >= 1,
+            top = (pk or {}).get(xid)
+            c = {"pe_z": z, "cheap": z <= -0.5, "corrected": (top["dd"] if top else dd(5)) <= -10, "dry": cur >= 1,
                  "bond": (gap_z >= 0.5) if gap_z is not None else None}
             rating, sip, lump, hits = _rate(c)
             out[mid] = {"label": label, "page_id": page_id, "as_of": t,
@@ -149,7 +150,7 @@ def market_context(root):
                         "checks": {k: c[k] for k in ("cheap", "corrected", "dry", "bond")},
                         "rating": rating, "sip": sip, "lump": lump, "hits": hits,
                         "checks_avail": sum(1 for k in ("cheap", "corrected", "dry", "bond") if c[k] is not None),
-                        "level": T[t]}
+                        "level": T[t], "top": top}
         except Exception as e:
             print(f"  market {mid} skipped: {e}", file=sys.stderr)
     return out
@@ -190,6 +191,45 @@ def run(root):
     print(f"  market-idx.json written ({len(out)} indices, {len(doc.get('mkt') or {})} market rows)")
     _register_final(root)
     return doc
+
+# ── "Fall from Top": highest DAILY close of each NSE index TRI in the last 10 years ──
+# Cache data/history/_peaks.dat = {index_id: {"y": {year: [max, "YYYY-MM-DD"]}}}; past years are
+# fetched once, the current year is re-fetched every build (1 request per index).
+PEAK_YEARS = 10
+def peaks(root):
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import build_index_tri as bi
+    path = os.path.join(root, "data", "history", "_peaks.dat")
+    try: C = json.load(open(path))
+    except Exception: C = {}
+    now = datetime.now(IST); cy = now.year
+    try: bi._session()
+    except Exception: pass
+    out = {}
+    for iid, name in bi.INDICES.items():
+        c = C.setdefault(iid, {"y": {}}); last = None
+        try:
+            for y in range(cy - PEAK_YEARS, cy + 1):
+                if str(y) in c["y"] and y < cy: continue
+                end = datetime(y, 12, 31) if y < cy else now.replace(tzinfo=None)
+                rows = [r for r in bi.fetch_tri(name, datetime(y, 1, 1), end) if r[0].year == y]
+                time.sleep(0.3)
+                if rows:
+                    mx = max(rows, key=lambda r: r[1]); c["y"][str(y)] = [mx[1], mx[0].strftime("%Y-%m-%d")]
+                    if y == cy: last = max(rows, key=lambda r: r[0])
+                elif y < cy: c["y"][str(y)] = [0, None]
+        except Exception as e:
+            print(f"  peaks {name}: {e}", file=sys.stderr)
+        win = [v for k, v in c["y"].items() if int(k) >= cy - PEAK_YEARS and v[0]]
+        if last: c["now"] = [last[1], last[0].strftime("%Y-%m-%d")]
+        if win and c.get("now"):
+            pk = max(win, key=lambda v: v[0])
+            out[iid] = {"peak": pk[0], "peak_date": pk[1], "now": c["now"][0], "now_date": c["now"][1],
+                        "dd": round(100 * (c["now"][0] / pk[0] - 1), 1)}
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w") as f: json.dump(C, f, separators=(",", ":"))
+    print(f"  peaks: {len(out)} indices")
+    return out
 
 # ── Call log + change alerts (run once, at the very end of the build, on fresh data) ──
 def _alert(lines):
@@ -265,7 +305,11 @@ def _register_final(root):
         try:
             doc = json.load(open(os.path.join(root, "docs", "market-idx.json")))
             try:
-                doc["mkt"] = market_context(root)
+                doc["peaks"] = peaks(root)
+            except Exception as e:
+                print(f"  peaks skipped: {e}", file=sys.stderr)
+            try:
+                doc["mkt"] = market_context(root, doc.get("peaks"))
                 with open(os.path.join(root, "docs", "market-idx.json"), "w") as f:
                     json.dump(doc, f, separators=(",", ":"))
             except Exception as e:
@@ -298,6 +342,7 @@ MKT_PATCHES = [
         mktIdx[iid] = { name: ix.name, ret: r, asOf: ix.latest_date };
       }
       if(mj.mkt) mktIdx._mkt = mj.mkt;
+      if(mj.peaks) mktIdx._peaks = mj.peaks;
     }
   } catch(e){ console.warn("Market index load failed", e); }
 '''),
@@ -318,7 +363,7 @@ MKT_PATCHES = [
   html += "</tbody>";
   $("heatmap").innerHTML = html;'''),
 
-('const CACHE_KEY = "mf_sector_cycle_v77_sip";', 'const CACHE_KEY = "mf_sector_cycle_v81_mkt3";'),
+('const CACHE_KEY = "mf_sector_cycle_v77_sip";', 'const CACHE_KEY = "mf_sector_cycle_v82_top";'),
 
 # One Nifty row only: the benchmark row is Nifty 50 TRI (not the UTI fund) — say so.
 (r"""<span style="font-size:9.5px;color:var(--muted);font-weight:400">${bFund?bFund.schemeName.slice(0,24)+"…":'—'}</span></th>`;""",
@@ -354,7 +399,7 @@ MKT_PATCHES = [
       <td class='r'><span style='color:#60a5fa;font-weight:800;font-size:10px'>📊 PURE INDEX</span></td>
       <td class='r' title="Dry year = TRI return below ${m.hurdle}% (≈ FD); current year counts if YTD is negative. Dry years: ${(m.dry_years||[]).join(", ")}">${m.dry_avg!=null ? m.dry_avg.toFixed(1)+'y / '+m.dry_max+'y' : '—'}<br><span style="font-size:9.5px;color:var(--muted)">yr &lt; ${m.hurdle}% (FD)</span></td>
       <td class='r' style='font-size:12px' title="Bought at the end of every dry year (no hindsight); ${a.won}/${a.count} next years beat ${m.hurdle}%">${fmtBounceCagr(a)}<br><span style="font-size:9.5px;color:var(--muted)">${a.won}/${a.count} beat FD next yr</span></td>
-      <td class='r' style='font-size:12px'>${fmtDD({dd5y:m.dd5y, dd10y:m.dd10y})}</td>
+      <td class='r' style='font-size:12px'>${_fromTop(m.top, m.dd10y)}</td>
       <td class='r'>${na}</td>
       <td class='r' style='font-size:12px'>${fmtMom({r3m:m.r3m, r6m:m.r6m, r12m:m.r12m})}</td>
       <td class='r'>${m.dry_cur ? `<span style='font-size:15px;font-weight:800;color:${m.dry_cur>=2?"var(--warn)":"var(--accent)"}'>${m.dry_cur}y</span><br><span style='font-size:10px;color:var(--muted)'>below FD</span>` : "<span style='color:var(--muted)'>0</span>"}</td>
@@ -399,6 +444,26 @@ async function renderCallLog(){
 }
 
 // Tab click handler — wire all view-tab buttons to switchView"""),
+
+# ── "Fall from Top": plain-language drawdown vs the highest DAILY close in 10 years ──
+(r"""    <th class='r'>DD from peak<br><span style='font-size:9px;font-weight:400'>5Y / 10Y</span></th>""",
+ r"""    <th class='r' title="How much lower it is today than its highest price in the last 10 years">Fall from Top<br><span style='font-size:9px;font-weight:400'>vs 10-yr high</span></th>"""),
+(r"""function renderCycleTable(){""",
+ r"""function _fromTop(t, approxDD){
+  // t = {dd, peak_date} from daily NSE TRI (market-idx.json peaks); approxDD = year-end fallback
+  const dd = t ? t.dd : approxDD;
+  if(dd == null) return "<span style='color:var(--muted)'>—</span>";
+  const b = dd > -5 ? ["Near top","var(--good)"] : dd > -10 ? ["Small dip","#fbbf24"] : dd > -20 ? ["Correction","var(--warn)"] : dd > -35 ? ["Big fall","var(--bad)"] : ["Crash","var(--bad)"];
+  const M = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const when = t && t.peak_date ? M[+t.peak_date.slice(5,7)-1] + "-" + t.peak_date.slice(0,4) : null;
+  const now = Math.round(100 + dd);
+  const line = dd > -0.5 ? "at its 10-yr high today" : `₹100 at its ${when ? when+" " : ""}high = ₹${now} today`;
+  const tip = "How much lower it is today than its highest price in the last 10 years" + (t ? " (daily NSE index data)" : " (approx — year-end data, fund proxy)");
+  return `<div title="${tip}"><span style="font-size:14px;font-weight:800;color:${b[1]}">${dd > -0.5 ? "0%" : dd.toFixed(0)+"%"}</span><br><span style="font-size:9.5px;color:var(--muted);line-height:1.3">${line}</span><br><span style="font-size:10px;font-weight:700;color:${b[1]}">${b[0]}</span>${t ? "" : "<span style='font-size:9px;color:var(--muted)'> · approx</span>"}</div>`;
+}
+function renderCycleTable(){"""),
+(r"""      <td class='r' style='font-size:12px'>${fmtDD(dd)}</td>""",
+ r"""      <td class='r' style='font-size:12px'>${_fromTop((((d.mktIdx||{})._peaks)||{})[((d.indexUsed||{})[r.sec.id]||{}).id], dd && dd.dd10y)}</td>"""),
 ]
 
 
