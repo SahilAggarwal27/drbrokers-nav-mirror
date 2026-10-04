@@ -286,3 +286,20 @@ try:
     WL_PATCHES += _bm.MKT_PATCHES
 except Exception as _e:
     print(f"  market-idx patches skipped: {_e}")
+
+# ── Cycle Summary: compact rows (05-Oct-2026) — table grows sideways instead of wrapping tall ──
+WL_PATCHES += [
+(r'''      .cycle-scroll table.cycle tbody td:first-child{position:sticky;left:0;z-index:2;background:var(--panel);box-shadow:inset -1px 0 0 var(--border)}
+    </style>''',
+ r'''      .cycle-scroll table.cycle tbody td:first-child{position:sticky;left:0;z-index:2;background:var(--panel);box-shadow:inset -1px 0 0 var(--border)}
+      .cycle-scroll table.cycle{width:max-content;min-width:100%;font-size:12px}
+      .cycle-scroll table.cycle th{padding:7px 10px;line-height:1.2;white-space:nowrap;vertical-align:bottom}
+      .cycle-scroll table.cycle th span{display:block;white-space:normal;min-width:90px;max-width:150px}
+      .cycle-scroll table.cycle td{padding:5px 10px;line-height:1.3}
+      .cycle-scroll table.cycle td.r{white-space:nowrap}
+      .cycle-scroll table.cycle td:first-child{min-width:150px;max-width:190px}
+      .cycle-scroll table.cycle td:nth-child(2){min-width:170px;max-width:230px}
+      .cycle-scroll table.cycle td:nth-child(n+11){min-width:180px;max-width:260px}
+      .cycle-scroll table.cycle td br + span[style*="line-height:1.5"]{line-height:1.35!important}
+    </style>'''),
+]
