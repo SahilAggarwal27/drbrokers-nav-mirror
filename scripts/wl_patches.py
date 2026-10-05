@@ -219,7 +219,7 @@ SIP_PATCHES = [
   let sip, lump;
   if(/ENTER|STRONG/.test(L)){ sip = ["✅ START / STEP-UP", G]; lump = ["✅ DEPLOY (or STP 3M)", G]; }
   else if(/WAIT FOR TURN/.test(L)){ sip = ["✅ START SIP", G]; lump = ["⏳ WAIT FOR TURN", W]; }
-  else if(/WATCH \(cheap\)/.test(L)){ sip = acc && !late ? ["✅ START SIP · accumulate", G] : late ? ["▶ CONTINUE, no new", N] : ["▶ CONTINUE", N]; lump = ["❌ NO — wait", M]; }
+  else if(/WATCH \(cheap\)/.test(L)){ sip = acc && !late ? ["✅ START SIP · cheap, not timed", G] : late ? ["▶ CONTINUE, no new", N] : ["▶ CONTINUE", N]; lump = ["❌ NO — wait", M]; }
   else if(/AVOID|TRIM|EXIT/.test(L)){ sip = ["⏸ NO NEW SIP", B]; lump = ["🔴 TRIM / EXIT", B]; }
   else if(/EXPENSIVE/.test(L)){ sip = ["⏸ CONTINUE, no new", W]; lump = ["❌ NO", M]; }
   else if(/WATCH/.test(L)){ sip = ["▶ CONTINUE", N]; lump = ["❌ NO — unvalidated", M]; }
