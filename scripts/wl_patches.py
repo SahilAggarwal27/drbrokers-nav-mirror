@@ -303,3 +303,36 @@ WL_PATCHES += [
       .cycle-scroll table.cycle td br + span[style*="line-height:1.5"]{line-height:1.35!important}
     </style>'''),
 ]
+
+# ── Cycle Summary: Quick view / Full detail toggle (05-Oct-2026) ──
+# Quick view (default) hides Rep Fund, 20Y Trend, Source, Dry, After-Dry CAGR, More Pain, Phase
+# (cols 2,3,4,5,6,8,11). Choice remembered per browser.
+WL_PATCHES += [
+(r'''    <div class="cycle-scroll"><table class="cycle" id="cycleTable"></table></div>''',
+ r'''    <style>
+      .cycle-vt{display:flex;gap:6px;align-items:center;margin:0 0 8px}
+      .cycle-vt button{background:transparent;border:1px solid var(--border);color:var(--muted);border-radius:8px;padding:5px 12px;font-size:12px;font-weight:700;cursor:pointer}
+      .cycle-vt button.on{background:rgba(124,92,255,.15);border-color:var(--accent);color:var(--text)}
+      .cycle-vt span{font-size:11px;color:var(--muted);margin-left:4px}
+      .cycle-scroll.quick table.cycle tr > :nth-child(2),
+      .cycle-scroll.quick table.cycle tr > :nth-child(3),
+      .cycle-scroll.quick table.cycle tr > :nth-child(4),
+      .cycle-scroll.quick table.cycle tr > :nth-child(5),
+      .cycle-scroll.quick table.cycle tr > :nth-child(6),
+      .cycle-scroll.quick table.cycle tr > :nth-child(8),
+      .cycle-scroll.quick table.cycle tr > :nth-child(11){display:none}
+    </style>
+    <div class="cycle-vt"><button id="cvQuick" onclick="setCycleView('quick')">Quick view</button><button id="cvFull" onclick="setCycleView('full')">Full detail</button><span id="cvNote"></span></div>
+    <div class="cycle-scroll quick" id="cycleScroll"><table class="cycle" id="cycleTable"></table></div>
+    <script>
+      function setCycleView(v){
+        var box = document.getElementById("cycleScroll"); if(!box) return;
+        box.classList.toggle("quick", v !== "full");
+        document.getElementById("cvQuick").classList.toggle("on", v !== "full");
+        document.getElementById("cvFull").classList.toggle("on", v === "full");
+        document.getElementById("cvNote").textContent = v === "full" ? "All columns — scroll sideways" : "Decision columns only — switch to Full detail for the research columns";
+        try { localStorage.setItem("cycle_view", v); } catch(e){}
+      }
+      (function(){ var v = "quick"; try { v = localStorage.getItem("cycle_view") || "quick"; } catch(e){} setCycleView(v); })();
+    </script>'''),
+]
