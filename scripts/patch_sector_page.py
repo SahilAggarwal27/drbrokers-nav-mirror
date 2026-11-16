@@ -291,6 +291,12 @@ try:
     PATCHES += WL_PATCHES
 except Exception as e:
     print(f"  wl_patches skipped: {e}")
+# 📅 Custom Range tab: any dates / month / year → sector returns vs Nifty 50 (scripts/range_patches.py).
+try:
+    from range_patches import RANGE_PATCHES
+    PATCHES += RANGE_PATCHES
+except Exception as e:
+    print(f"  range_patches skipped: {e}")
 REQUIRED = {1, 3}  # the page is only worth publishing if the loader + fetch block are patched
 
 
@@ -309,6 +315,11 @@ def run(root):
         build_fund_picks.run(root)
     except Exception as e:
         print(f"  build_fund_picks skipped: {e}")
+    try:
+        import build_sector_daily
+        build_sector_daily.run(root)
+    except Exception as e:
+        print(f"  build_sector_daily skipped: {e}")
     req = urllib.request.Request(SRC_URL, headers={"User-Agent": "drbrokers-nav-mirror/1.0"})
     with urllib.request.urlopen(req, timeout=60) as r:
         s = r.read().decode("utf-8")
