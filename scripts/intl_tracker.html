@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>International Cycle — D.R. Brokers</title>
+<style>
+:root{--bg:#0b1020;--panel:#121a2e;--panel2:#18223a;--border:#26324d;--text:#e6ebf5;--muted:#8b97b3;--good:#22c55e;--bad:#ef4444;--warn:#f59e0b;--accent:#60a5fa}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:13px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+.wrap{max-width:1320px;margin:0 auto;padding:18px}
+h1{font-size:20px;margin:0 0 2px}h2{font-size:15px;margin:22px 0 8px}
+.sub{color:var(--muted);font-size:12px}
+.card{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:14px;margin-top:12px}
+.bl{font-size:14px;line-height:1.55}.bl b{color:#fff}
+.tabs{display:flex;gap:6px;margin-top:14px;flex-wrap:wrap}.tab{background:var(--panel2);border:1px solid var(--border);color:var(--muted);padding:7px 12px;border-radius:8px;cursor:pointer;font-weight:600}
+.tab.on{color:#fff;border-color:var(--accent);background:#1d2b4a}
+.pane{display:none}.pane.on{display:block}
+table{width:100%;border-collapse:collapse}th,td{padding:8px 8px;border-bottom:1px solid var(--border);text-align:left;vertical-align:top}
+th{color:var(--muted);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;background:var(--panel2);position:sticky;top:0}
+td.r,th.r{text-align:right}
+.badge{display:inline-block;font-size:10.5px;font-weight:800;padding:3px 8px;border-radius:99px;white-space:nowrap}
+.chip{display:inline-block;font-size:10px;font-weight:700;padding:1px 6px;border-radius:5px;margin:1px 2px 1px 0;white-space:nowrap}
+.open{background:rgba(34,197,94,.15);color:var(--good)}.closed{background:rgba(139,151,179,.12);color:var(--muted)}
+.susp{background:rgba(239,68,68,.15);color:var(--bad)}.exch{background:rgba(96,165,250,.15);color:var(--accent)}.lim{background:rgba(245,158,11,.15);color:var(--warn)}
+.pos{color:var(--good)}.neg{color:var(--bad)}.mut{color:var(--muted)}
+.why{font-size:11.5px;color:#c5cde0;max-width:340px}
+.act{font-weight:800;font-size:11.5px;white-space:nowrap}
+tr.x{cursor:pointer}tr.x:hover td{background:rgba(96,165,250,.05)}
+tr.fl td{background:#0e1528;font-size:12px}
+.heat td{text-align:right;font-size:12px;padding:6px}.heat th{text-align:right}.heat td:first-child,.heat th:first-child{text-align:left;white-space:nowrap}
+.legend{display:flex;gap:10px;flex-wrap:wrap;margin-top:8px;font-size:11px;color:var(--muted)}
+.scroll{overflow:auto;max-height:78vh;border-radius:8px;border:1px solid var(--border)}
+.small{font-size:11px;color:var(--muted)}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:10px}
+.ob{background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:10px}
+.ob .n{font-weight:700}.ob .s{margin-top:4px}
+a{color:var(--accent)}
+</style></head><body><div class="wrap">
+<h1>🌍 International Cycle — where to invest overseas</h1>
+<div class="sub" id="asof">Loading…</div>
+
+<div class="card bl" id="bottom"></div>
+
+<h2>✅ Open for fresh money right now</h2>
+<div class="grid" id="openlist"></div>
+<div class="small" id="statusnote" style="margin-top:6px"></div>
+
+<div class="tabs">
+  <div class="tab on" data-p="p1">Where to invest</div>
+  <div class="tab" data-p="p2">Year-by-year returns (₹)</div>
+  <div class="tab" data-p="p3">All international funds</div>
+  <div class="tab" data-p="p4">How the signal works</div>
+</div>
+
+<div class="pane on" id="p1"><div class="card" style="padding:0"><div class="scroll"><table id="sig"></table></div></div>
+<div class="small" style="margin-top:6px">Click a row to see the Indian funds for that market. All returns in rupees. “vs Nifty” = how far ahead (+) or behind (−) Nifty 50 TRI.</div></div>
+<div class="pane" id="p2"><div class="card" style="padding:0"><div class="scroll"><table class="heat" id="heat"></table></div></div>
+<div class="small" style="margin-top:6px">Calendar-year returns in ₹ (market proxy × USD/INR). Last column is year-to-date. Green = beat Nifty 50 TRI that year, red = lagged it.</div></div>
+<div class="pane" id="p3"><div class="card" style="padding:0"><div class="scroll"><table id="funds"></table></div></div></div>
+<div class="pane" id="p4"><div class="card" id="method"></div></div>
+</div>
+<script>
+const SRC = ["intl-signals.json","https://sahilaggarwal27.github.io/drbrokers-nav-mirror/intl-signals.json"];
+const $ = id => document.getElementById(id);
+const pc = (x,d=1) => x==null ? "<span class='mut'>—</span>" : `<span class='${x>=0?"pos":"neg"}'>${x>=0?"+":""}${x.toFixed(d)}%</span>`;
+const CALL = {
+  "ENTER":["🟢 ENTER","#22c55e","Has lagged India, is cheap vs its own history, and has started to turn up."],
+  "WAIT FOR TURN":["🟡 WAIT FOR TURN","#f59e0b","Has lagged India and is cheap, but hasn't turned up yet. SIP is fine; hold lumpsum."],
+  "WATCH (cheap)":["🔵 WATCH (cheap)","#60a5fa","Cheap vs its own history, but hasn't lagged India — tested: no edge on its own. Just watch."],
+  "NEUTRAL":["⚪ NEUTRAL","#8b97b3","No edge either way."],
+  "AVOID / TRIM":["🟠 AVOID / TRIM","#fb923c","Has run far ahead of India and is above its usual level — late to add."],
+  "EXPENSIVE — NO NEW MONEY":["🔴 EXPENSIVE","#ef4444","Stretched well above its own 5-year average — book profits, no new money."],
+  "INSUFFICIENT HISTORY":["— NO DATA","#8b97b3","Not enough history."]
+};
+const ACT = {
+  "ENTER":["Start SIP","Deploy lumpsum"], "WAIT FOR TURN":["Start SIP","Wait"], "WATCH (cheap)":["Continue SIP","Wait"],
+  "NEUTRAL":["Continue SIP","No lumpsum"], "AVOID / TRIM":["Continue, don't add","Trim / no lumpsum"],
+  "EXPENSIVE — NO NEW MONEY":["Stop new SIPs","Book profits"], "INSUFFICIENT HISTORY":["—","—"]
+};
+const actColor = t => /Start|Deploy/.test(t) ? "var(--good)" : /Wait|Continue|small/.test(t) ? "var(--warn)" : /Book|Trim|Stop/.test(t) ? "var(--bad)" : "var(--muted)";
+const st = s => ({open:["open","Open"],limited:["lim","Limited"],closed:["closed","Closed"],suspended:["susp","Suspended"],exchange:["exch","On exchange"],"n/a":["closed","—"]}[s]||["closed",s]);
+function chips(f){
+  if(f.kind==="etf") return `<span class="chip exch">ETF · buy on NSE/BSE</span>`;
+  const a=st(f.lumpsum), b=st(f.sip);
+  return `<span class="chip ${a[0]}">Lumpsum: ${a[1]}</span><span class="chip ${b[0]}">SIP: ${b[1]}</span>`;
+}
+const isOpen = f => f.kind!=="etf" && (["open","limited"].includes(f.lumpsum) || ["open","limited"].includes(f.sip));
+function why(it){
+  if(it.call==="INSUFFICIENT HISTORY") return "Not enough history.";
+  const p=[];
+  p.push(it.rel24<-10 ? `Lagged India by ${Math.abs(it.rel24).toFixed(0)}% over 2 yrs` : it.rel24>20 ? `Beat India by ${it.rel24.toFixed(0)}% over 2 yrs` : `Roughly in line with India over 2 yrs (${it.rel24>0?"+":""}${it.rel24.toFixed(0)}%)`);
+  p.push(it.cheap ? `cheap vs its own history` : it.z>1 ? `well above its usual level` : `near its usual level`);
+  p.push(it.turning ? `turning up vs India (3M)` : `still weaker than India over 3M`);
+  return p.join(" · ") + ".";
+}
+function render(j){
+  $("asof").innerHTML = `Signals as of <b>${j.as_of}</b> · fund subscription status as of <b>${j.status_as_of||"—"}</b> · built ${j.generated_ist.slice(0,16).replace("T"," ")} IST`;
+  const items=j.items, ok=items.filter(i=>i.call!=="INSUFFICIENT HISTORY");
+  // Bottom line
+  const buys=ok.filter(i=>["ENTER","WAIT FOR TURN"].includes(i.call)), watch=ok.filter(i=>i.call==="WATCH (cheap)");
+  const hot=ok.filter(i=>["AVOID / TRIM","EXPENSIVE — NO NEW MONEY"].includes(i.call));
+  const ahead=ok.filter(i=>i.rel24>0).length;
+  const med=[...ok].map(i=>i.rel24).sort((a,b)=>a-b)[Math.floor(ok.length/2)];
+  let bl = `<b>Bottom line:</b> ${ahead} of ${ok.length} overseas markets have beaten Nifty 50 over the last 2 years (median ${med>=0?"+":""}${med.toFixed(0)}% ahead, in ₹). `;
+  bl += buys.length ? `<b>Buy-side signals:</b> ${buys.map(i=>i.label+" ("+i.call+")").join(", ")}. ` : `<b>No overseas market is a buy signal right now</b> — after this run, India is the relatively cheaper market. `;
+  if(watch.length) bl += `On watch (cheap): ${watch.map(i=>i.label).join(", ")}. `;
+  if(hot.length) bl += `<b>${hot.length} markets are flagged AVOID/TRIM or EXPENSIVE</b> — don't add lumpsum there; for existing holdings, consider booking part of the gains. `;
+  const openFunds=[]; items.forEach(i=>i.funds.forEach(f=>{ if(isOpen(f)) openFunds.push([i,f]); }));
+  bl += `<br><span class="small">Most international funds are shut to new money because SEBI's overseas cap for the MF industry is nearly used up — only ${openFunds.length} fund${openFunds.length===1?"":"s"} in this list take fresh money today.</span>`;
+  $("bottom").innerHTML = bl;
+  // Open list
+  $("openlist").innerHTML = openFunds.length ? openFunds.map(([i,f])=>{const c=CALL[i.call]||CALL.NEUTRAL;return `<div class="ob"><div class="n">${f.name.replace(/ Regular Plan.*$/i,"")}</div><div class="small">${i.label} · signal <span style="color:${c[1]};font-weight:800">${c[0]}</span></div><div class="s">${chips(f)}</div>${f.note?`<div class="small" style="margin-top:4px">${f.note}</div>`:""}<div class="small" style="margin-top:4px">YTD ${pc(f.ytd)} · 3Y CAGR ${pc(f.cagr3)}</div></div>`;}).join("") : `<div class="ob">None open right now.</div>`;
+  $("statusnote").innerHTML = "Status sources: " + (j.status_sources||[]).join(" · ") + ". AMCs open and close these often — confirm on the AMC/RTA before placing an order. ETFs can always be bought on the exchange but often trade at a premium to NAV.";
+  // Signal table
+  let h=`<thead><tr><th>Market (₹)</th><th>Signal</th><th>Why, in plain words</th><th class="r">24M vs Nifty</th><th class="r">3M vs Nifty</th><th class="r">vs own 5Y avg</th><th class="r">12M return</th><th>How to invest</th><th>SIP</th><th>Lumpsum</th></tr></thead><tbody>`;
+  items.forEach((it,k)=>{
+    const c=CALL[it.call]||CALL.NEUTRAL, a=ACT[it.call]||["—","—"];
+    const nOpen=it.funds.filter(isOpen).length, nEtf=it.funds.filter(f=>f.kind==="etf").length, nF=it.funds.filter(f=>f.kind!=="etf").length;
+    const route = nOpen ? `<span class="chip open">${nOpen} fund open</span>` : nF ? `<span class="chip closed">${nF} fund${nF>1?"s":""} — all closed</span>` : `<span class="chip closed">No Indian fund</span>`;
+    const sipA = nOpen||!nF ? a[0] : (/Start/.test(a[0]) ? a[0]+" when open" : a[0]);
+    const lumA = nOpen||!nF ? a[1] : (/Deploy/.test(a[1]) ? "Deploy when open" : a[1]);
+    h+=`<tr class="x" data-k="${k}"><td><b>${it.label}</b><br><span class="small">${it.group==="theme"?"Theme":"Region"} · proxy ${it.proxy} · ${it.funds.length} scheme${it.funds.length===1?"":"s"} ▾</span></td>
+    <td><span class="badge" style="background:${c[1]}22;color:${c[1]}">${c[0]}</span></td>
+    <td class="why">${why(it)}<br><span class="mut">${c[2]}</span></td>
+    <td class="r">${pc(it.rel24,0)}</td><td class="r">${pc(it.rel3)}</td><td class="r">${pc(it.vs_avg,0)}<br><span class="small">z ${it.z>0?"+":""}${it.z}</span></td><td class="r">${pc(it.ret12)}</td>
+    <td>${route}${nEtf?`<br><span class="chip exch">${nEtf} ETF on exchange</span>`:""}</td>
+    <td class="act" style="color:${actColor(sipA)}">${sipA}</td><td class="act" style="color:${actColor(lumA)}">${lumA}</td></tr>`;
+    h+=`<tr class="fl" id="fl${k}" style="display:none"><td colspan="10">${fundTable(it.funds)}</td></tr>`;
+  });
+  $("sig").innerHTML=h+"</tbody>";
+  document.querySelectorAll("tr.x").forEach(r=>r.onclick=()=>{const e=$("fl"+r.dataset.k);e.style.display=e.style.display==="none"?"":"none";});
+  // Heat map
+  const yrs=Object.keys(j.nifty_cy).sort(), cur=yrs[yrs.length-1];
+  let H=`<thead><tr><th>Market</th>${yrs.map(y=>`<th>${y===cur?y+" YTD":y}</th>`).join("")}</tr></thead><tbody>`;
+  H+=`<tr style="background:rgba(96,165,250,.07)"><td><b>📈 Nifty 50 TRI</b> <span class="small">benchmark</span></td>${yrs.map(y=>`<td>${pc(j.nifty_cy[y],0)}</td>`).join("")}</tr>`;
+  [...ok].sort((a,b)=>a.label.localeCompare(b.label)).forEach(it=>{
+    H+=`<tr><td>${it.label}</td>${yrs.map(y=>{const v=(it.cy||{})[y], n=j.nifty_cy[y]; if(v==null) return "<td class='mut'>—</td>"; const d=v-n, a=Math.min(Math.abs(d)/40,1)*.55+.08; return `<td style="background:${d>=0?`rgba(34,197,94,${a})`:`rgba(239,68,68,${a})`}" title="${it.label} ${y}: ${v}% vs Nifty ${n}%">${v>=0?"+":""}${v.toFixed(0)}%</td>`;}).join("")}</tr>`;
+  });
+  $("heat").innerHTML=H+"</tbody>";
+  // All funds
+  const all=[]; items.forEach(i=>i.funds.forEach(f=>all.push([i,f])));
+  all.sort((a,b)=>(isOpen(b[1])-isOpen(a[1]))||a[0].label.localeCompare(b[0].label));
+  let F=`<thead><tr><th>Scheme (Regular, Growth)</th><th>Market</th><th>Signal</th><th>Status</th><th class="r">YTD</th><th class="r">3Y CAGR</th><th class="r">5Y CAGR</th><th class="r">NAV</th></tr></thead><tbody>`;
+  all.forEach(([i,f])=>{const c=CALL[i.call]||CALL.NEUTRAL;F+=`<tr><td>${f.name}<br><span class="small">AMFI ${f.code}${f.note?" · "+f.note:""}</span></td><td>${i.label}</td><td><span style="color:${c[1]};font-weight:800;font-size:11px">${c[0]}</span></td><td>${chips(f)}</td><td class="r">${pc(f.ytd)}</td><td class="r">${pc(f.cagr3)}</td><td class="r">${pc(f.cagr5)}</td><td class="r">${f.nav}<br><span class="small">${f.nav_date}</span></td></tr>`;});
+  $("funds").innerHTML=F+"</tbody>";
+  // Method
+  const ev=j.evidence, order=["ENTER","WAIT FOR TURN","WATCH (cheap)","NEUTRAL","AVOID / TRIM","EXPENSIVE — NO NEW MONEY","ALL"];
+  $("method").innerHTML=`<h2 style="margin-top:0">How the signal is built</h2>
+  <p>Same logic as the domestic Sector Signal, but for overseas markets and measured in <b>rupees</b> (what your client actually earns, currency move included), always against <b>Nifty 50 TRI</b>:</p>
+  <ul><li><b>Dry</b> — ${j.rules.dry}</li><li><b>Cheap</b> — ${j.rules.cheap}. Overseas P/E history isn't available, so “how stretched is the price vs its own 5-year average” is the value check.</li><li><b>Turning</b> — ${j.rules.turning}</li>
+  <li><b>ENTER</b> = Dry + Cheap + Turning · <b>WAIT FOR TURN</b> = Dry + Cheap · <b>WATCH</b> = Cheap only · <b>AVOID / TRIM</b> = ${j.rules.hot} · <b>EXPENSIVE</b> = ${j.rules.exit}</li></ul>
+  <h2>Did it work? (monthly signals since 2014, next-12-month ₹ return vs Nifty 50 TRI)</h2>
+  <table style="max-width:640px"><thead><tr><th>Signal</th><th class="r">Cases</th><th class="r">Avg excess</th><th class="r">Median excess</th><th class="r">Beat Nifty</th></tr></thead><tbody>
+  ${order.filter(k=>ev[k]).map(k=>`<tr><td>${k}</td><td class="r">${ev[k].n}</td><td class="r">${pc(ev[k].avg)}</td><td class="r">${pc(ev[k].median)}</td><td class="r">${ev[k].beat_pct}%</td></tr>`).join("")}</tbody></table>
+  <p class="small">Read it as: when a market was flagged ENTER, it beat Nifty over the next year in this share of cases. Overlapping 12-month windows, ${items.length} markets — treat as a tilt, not a guarantee.</p>
+  <h2>Disclosures</h2><ul class="small">
+  <li>Market proxies are US-listed ETFs/indices from Yahoo Finance (adjusted close = incl. dividends; S&P 500 uses the total-return index), converted at USD/INR. Indian FoFs add their own expense ratio and tracking difference.</li>
+  <li>Fund returns come from AMFI NAVs in the D.R. Brokers NAV mirror (year-end + daily since Aug-2026), Regular plans.</li>
+  <li>Subscription status is maintained by hand in <code>data/intl_status.json</code>; anything not listed is assumed closed. Always confirm with the AMC.</li>
+  <li>Overseas investing by Indian MFs is capped by SEBI/RBI (industry $7 bn, plus $1 bn for overseas ETFs); funds open and shut at short notice.</li></ul>`;
+}
+function fundTable(fs){
+  if(!fs.length) return "<span class='mut'>No Indian mutual fund gives direct access to this market.</span>";
+  return `<table><thead><tr><th>Scheme</th><th>Status</th><th class="r">YTD</th><th class="r">3Y CAGR</th><th class="r">5Y CAGR</th></tr></thead><tbody>${fs.map(f=>`<tr><td>${f.name}${f.note?`<br><span class="small">${f.note}</span>`:""}</td><td>${chips(f)}</td><td class="r">${pc(f.ytd)}</td><td class="r">${pc(f.cagr3)}</td><td class="r">${pc(f.cagr5)}</td></tr>`).join("")}</tbody></table>`;
+}
+document.querySelectorAll(".tab").forEach(t=>t.onclick=()=>{document.querySelectorAll(".tab,.pane").forEach(e=>e.classList.remove("on"));t.classList.add("on");$(t.dataset.p).classList.add("on");});
+if(/embed=1/.test(location.search)){document.body.style.background="transparent";document.querySelector(".wrap").style.padding="4px 0";document.querySelector("h1").style.display="none";}
+const _postH=()=>{if(parent!==window)parent.postMessage({intlHeight:document.documentElement.scrollHeight},"*");};
+try{new ResizeObserver(_postH).observe(document.body);}catch(e){setInterval(_postH,800);}
+(async()=>{for(const u of SRC){try{const r=await fetch(u,{cache:"no-cache"});if(r.ok){render(await r.json());return;}}catch(e){}}$("asof").textContent="Could not load intl-signals.json";})();
+</script></body></html>
