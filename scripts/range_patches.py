@@ -173,3 +173,22 @@ async function renderRangeView(){
 
 // Tab click handler — wire all view-tab buttons to switchView'''),
 ]
+
+# ── Split "FMCG / Consumption" into two rows (17-Nov-2026): FMCG follows Nifty FMCG with pure FMCG
+# funds; Consumption follows Nifty India Consumption with broad consumption funds. ──
+RANGE_PATCHES += [
+(r'''  {id:"fmcg",       label:"FMCG / Consumption", indexPatterns:[/Nippon India ETF.*FMCG/i, /ICICI.*Nifty FMCG ETF/i], patterns:[/ICICI Prudential FMCG/i, /SBI Consumption/i, /Mirae Asset Great Consumer/i, /SBI Magnum FMCG/i, /Aditya Birla.*FMCG/i, /Aditya Birla.*GenNext/i, /Sundaram.*Consumption/i, /Sundaram Rural/i, /Tata.*Consumer/i, /Tata India Consumer/i, /UTI.*Consumer/i, /Canara Robeco Consumer/i, /Nippon India Consumption/i, /Kotak.*Consumption/i, /HDFC.*Consumption/i, /Baroda.*Consumption/i, /Quant.*Consumption/i, /Mahindra.*Consumption/i, /Axis.*Consumption/i]},''',
+ r'''  {id:"fmcg",       label:"FMCG", indexPatterns:[/Nippon India ETF.*FMCG/i, /ICICI.*Nifty FMCG ETF/i], patterns:[/ICICI Prudential FMCG/i, /SBI Magnum FMCG/i, /Aditya Birla.*FMCG/i]},
+  {id:"consumption", label:"Consumption", indexPatterns:[/Nifty India Consumption/i], patterns:[/SBI Consumption/i, /Mirae Asset Great Consumer/i, /Aditya Birla.*GenNext/i, /Sundaram.*Consumption/i, /Sundaram Rural/i, /Tata.*Consumer/i, /Tata India Consumer/i, /UTI.*Consumer/i, /Canara Robeco Consumer/i, /Nippon India Consumption/i, /Kotak.*Consumption/i, /HDFC.*Consumption/i, /Baroda.*Consumption/i, /Quant.*Consumption/i, /Mahindra.*Consumption/i, /Axis.*Consumption/i]},'''),
+# index-first returns (Performance Matrix)
+('''banking:"finserv", fmcg:"fmcg",
+''', '''banking:"finserv", fmcg:"fmcg", consumption:"consumption",
+'''),
+# actions follow the Sector Signal
+('''  banking:"finserv", fmcg:"fmcg", infra:"infra", energy:"energy", defense:"defence", mnc:"mnc" };''',
+ '''  banking:"finserv", fmcg:"fmcg", consumption:"consumption", infra:"infra", energy:"energy", defense:"defence", mnc:"mnc" };'''),
+# Sector Signal tab: Consumption row gets its own fund picks
+('consumption:"fmcg",', 'consumption:"consumption",'),
+# new sector list -> drop old cached matrices
+('const CACHE_KEY = "mf_sector_cycle_v82_top";', 'const CACHE_KEY = "mf_sector_cycle_v83_split";'),
+]
