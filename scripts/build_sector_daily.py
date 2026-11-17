@@ -21,6 +21,14 @@ def run(root):
     sys.path.insert(0, here)
     import build_index_tri as b
     from build_sector_signals import IDX
+    # 🌍 International Cycle: build intl-signals.json + intl-tracker.html and register the
+    # Sector Cycle "International" tab patches (scripts/intl_patches.py). Isolated.
+    try:
+        import build_intl_signals, intl_patches
+        build_intl_signals.run(root)
+        intl_patches.register()
+    except Exception as e:
+        print(f"  intl tracker skipped: {e}")
 
     path = os.path.join(root, "data", "history", "_sector_daily.dat")
     pub = os.path.join(root, "docs", "sector-daily.json")
