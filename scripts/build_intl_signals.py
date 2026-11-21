@@ -13,7 +13,7 @@ Same rule-shape as build_sector_signals.py, measured in RUPEES against Nifty 50 
 Market data: Yahoo Finance monthly (ETF adjusted close = total return) x USD/INR.
 The evidence table is recomputed on every run: next-12M INR return vs Nifty 50 TRI per call.
 Subscription status lives in data/intl_status.json (edit by hand when AMCs open/close)."""
-import os, sys, json, math, time, statistics as st, urllib.request, urllib.parse
+import os, re, sys, json, math, time, statistics as st, urllib.request, urllib.parse
 from datetime import datetime, timedelta, timezone
 
 IST = timezone(timedelta(hours=5, minutes=30))
@@ -197,6 +197,85 @@ def fund_rows(root, status):
         rows[iid].sort(key=lambda r: (min(rank.get(r["lumpsum"], 5), rank.get(r["sip"], 5)), r["kind"] == "etf", r["code"]))
     return rows
 
+# ── Fund selection: SAME rules as build_fund_picks.py (domestic sector picks) ──────────────
+# Benchmark = the market's own ₹ proxy (year-end Dec closes). Regular Growth, >= 5 complete years.
+#   roll3_hit (35) · roll3_edge pct (25) · downside pct (25) · year_hit (15);  PASS = roll3_hit >= 60%
+# Picks = top 2 PASS funds, reviewed monthly, replaced only after 2 consecutive FAILs.
+# Most intl schemes are passive FoFs that track (and so trail) their index after costs; when none
+# PASS, the highest-scoring scheme is shown as "best tracker" — the role the index fund plays at home.
+PICK_LOOKBACK, PICK_MIN_YEARS, PICK_PASS = 10, 5, 0.60
+MIXED = {148557: "Half India healthcare — the world-healthcare benchmark is not like-for-like"}
+
+def _pct_rank(vals):
+    s = sorted(v for v in vals if v is not None)
+    return [None if v is None else (sum(1 for x in s if x < v) + 0.5 * (s.count(v) - 1)) / max(1, len(s) - 1) for v in vals]
+
+def score_funds(root, rows, series, state, month):
+    hd = os.path.join(root, "data", "history"); cur_y = int(month[:4])
+    years = list(range(cur_y - PICK_LOOKBACK - 1, cur_y))
+    picks_out = {}
+    for iid, lst in rows.items():
+        T = series.get(iid) or {}
+        ilv = {y: T[f"{y}-12"] for y in years if f"{y}-12" in T}
+        scored = []
+        for r in lst:
+            if r["kind"] == "etf": continue
+            try: h = json.load(open(os.path.join(hd, f"{r['code']}.json")))
+            except Exception: continue
+            pts = sorted((datetime.strptime(d, "%d-%m-%Y"), float(v)) for d, v in h.get("points", {}).items()
+                         if re.match(r"\d\d-\d\d-\d{4}$", d))
+            def ye(y):
+                c = [v for t, v in pts if t.year == y and t.month == 12]
+                return c[-1] if c else None
+            flv = {y: ye(y) for y in years}; flv = {y: v for y, v in flv.items() if v}
+            ys = [y for y in years if y in flv and y in ilv]
+            ann = [(y, (flv[y] / flv[y - 1] - 1) * 100, (ilv[y] / ilv[y - 1] - 1) * 100)
+                   for y in ys if y - 1 in flv and y - 1 in ilv]
+            if len(ann) < PICK_MIN_YEARS: continue
+            roll = [(((flv[y] / flv[y - 3]) ** (1 / 3) - 1) * 100, ((ilv[y] / ilv[y - 3]) ** (1 / 3) - 1) * 100)
+                    for y in ys if y - 3 in flv and y - 3 in ilv]
+            if not roll: continue
+            ex = sorted(f - i for f, i in roll)
+            weak = sorted(ann, key=lambda a: a[2])[:max(1, len(ann) // 3)]
+            r.update({"years": len(ann),
+                      "roll3_hit": round((sum(1 for f, i in roll if f > i) + 1) / (len(roll) + 2), 3),
+                      "roll3_windows": len(roll), "roll3_edge": round(ex[len(ex) // 2], 2),
+                      "downside": round(sum(f - i for _, f, i in weak) / len(weak), 2),
+                      "year_hit": round(sum(1 for _, f, i in ann if f > i) / len(ann), 3)})
+            scored.append(r)
+        pe = _pct_rank([f["roll3_edge"] for f in scored]); pd = _pct_rank([f["downside"] for f in scored])
+        for f, a, b in zip(scored, pe, pd):
+            f["score"] = round(35 * f["roll3_hit"] + 25 * (a or 0) + 25 * (b or 0) + 15 * f["year_hit"], 1)
+            f["pick_status"] = "PASS" if f["roll3_hit"] >= PICK_PASS else ("WATCH" if f["roll3_hit"] >= 0.4 else "FAIL")
+            if f["code"] in MIXED: f["pick_note"] = MIXED[f["code"]]
+        scored.sort(key=lambda f: -f["score"])
+        byc = {f["code"]: f for f in scored}
+        st = state.get(iid, {"picks": [], "strikes": {}, "month": ""})
+        if st.get("month") != month:
+            keep = []
+            for c in st.get("picks", []):
+                f = byc.get(c); ok = f is not None and f["pick_status"] == "PASS"
+                st["strikes"][str(c)] = 0 if ok else st["strikes"].get(str(c), 0) + 1
+                if f is not None and st["strikes"][str(c)] < 2: keep.append(c)
+            for f in scored:
+                if len(keep) >= 2: break
+                if f["pick_status"] == "PASS" and f["code"] not in keep: keep.append(f["code"])
+            st["strikes"] = {c: n for c, n in st["strikes"].items() if int(c) in keep}
+            st["picks"], st["month"] = keep, month
+        state[iid] = st
+        picks = [byc[c] for c in st["picks"] if c in byc]
+        for f in picks: f["pick"] = "PICK"
+        best = None
+        if not picks and scored:
+            best = scored[0]; best["pick"] = "BEST TRACKER"
+        open_ = lambda f: f["lumpsum"] in ("open", "limited") or f["sip"] in ("open", "limited")
+        best_open = next((f for f in scored if open_(f)), None)
+        picks_out[iid] = {"universe": len(scored), "passing": sum(1 for f in scored if f["pick_status"] == "PASS"),
+                          "picks": [f["code"] for f in picks], "best_tracker": best and best["code"],
+                          "best_open": best_open and best_open["code"]}
+        lst.sort(key=lambda r: (0 if r.get("pick") else 1, -(r.get("score") or -1), r["kind"] == "etf"))
+    return picks_out
+
 def run(root):
     p = os.path.join(root, "data", "history", "_intl_hist.dat")
     try: hist = json.load(open(p))
@@ -213,6 +292,11 @@ def run(root):
     try: status = json.load(open(os.path.join(root, "data", "intl_status.json")))
     except Exception: status = {"as_of": "", "funds": {}}
     funds = fund_rows(root, status.get("funds", {}))
+    sp = os.path.join(root, "data", "history", "_intl_picks.dat")
+    try: pstate = json.load(open(sp))
+    except Exception: pstate = {}
+    picks = score_funds(root, funds, series, pstate, datetime.now(IST).strftime("%Y-%m"))
+    with open(sp, "w") as fh: json.dump(pstate, fh, separators=(",", ":"))
 
     out = {"v": 1, "generated_ist": datetime.now(IST).isoformat(), "as_of": t,
            "status_as_of": status.get("as_of", ""), "status_sources": status.get("sources", []),
@@ -225,7 +309,8 @@ def run(root):
     for iid, (label, group, sym, _) in MKT.items():
         T = series.get(iid)
         s = signals_at(T, N, t) if T else None
-        it = {"id": iid, "label": label, "group": group, "proxy": sym, "funds": funds.get(iid, [])}
+        it = {"id": iid, "label": label, "group": group, "proxy": sym, "funds": funds.get(iid, []),
+              "selection": picks.get(iid, {"universe": 0, "passing": 0, "picks": [], "best_tracker": None, "best_open": None})}
         if not s:
             it["call"] = "INSUFFICIENT HISTORY"
         else:
