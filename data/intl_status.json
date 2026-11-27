@@ -1,7 +1,8 @@
 {
-  "as_of": "2026-11-17",
+  "as_of": "2026-11-27",
   "help": "Edit when an AMC opens/closes a scheme. Values: open | limited | closed | suspended (suspended = existing SIPs also stopped). Any scheme not listed is treated as closed. ETFs trade on the exchange regardless.",
   "sources": [
+    "Value Research, 19-Nov-2026 (status as on 19-Nov; Edelweiss healthcare paused SIPs restart 20-Nov)",
     "Value Research / 5paisa, status as on 4-Nov-2026 (Invesco suspension incl. existing SIPs)",
     "Value Research, 21-Oct-2026 (Edelweiss healthcare reopening)",
     "Value Research, HSBC suspension from 26-Aug-2026"
@@ -9,7 +10,7 @@
   "funds": {
     "150284": {"lumpsum": "open", "sip": "open", "note": "Only international FoF taking both lumpsum and new SIP"},
     "149299": {"lumpsum": "open", "sip": "closed", "note": "Lumpsum reopened 8-Oct-2026; new SIP closed"},
-    "148557": {"lumpsum": "open", "sip": "open", "note": "Reopened 26-Oct-2026; paused SIPs restart 20-Nov-2026. Part India, part world healthcare"},
+    "148557": {"lumpsum": "open", "sip": "open", "note": "Reopened 26-Oct-2026; paused SIPs restarted 20-Nov-2026. Part India, part world healthcare"},
     "126351": {"lumpsum": "suspended", "sip": "suspended", "note": "From 4-Nov-2026 — even existing SIP instalments stopped"},
     "129187": {"lumpsum": "suspended", "sip": "suspended", "note": "From 4-Nov-2026 — even existing SIP instalments stopped"},
     "148613": {"lumpsum": "suspended", "sip": "suspended", "note": "From 4-Nov-2026 — even existing SIP instalments stopped"},
